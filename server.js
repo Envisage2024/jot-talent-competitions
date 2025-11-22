@@ -388,6 +388,162 @@ app.get('/payment-status/:transactionId', async (req, res) => {
     }
 });
 
+// Firebase-only payment verification endpoint (NEW)
+app.post('/check-payment-status-firebase', async (req, res) => {
+    try {
+        const { transactionId } = req.body;
+        
+        if (!transactionId) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Transaction ID is required.' 
+            });
+        }
+        
+        console.log('🔍 Checking payment status in Firebase:', transactionId);
+        
+        // Check Firestore for the transaction - source of truth
+        const paymentDoc = await db.collection('payments').doc(transactionId).get();
+        
+        if (!paymentDoc.exists) {
+            console.log('❌ Transaction not found in Firebase:', transactionId);
+            return res.status(404).json({ 
+                success: false,
+                paymentStatus: 'NOT_FOUND',
+                message: 'Transaction not found',
+                transactionId: transactionId
+            });
+        }
+        
+        const paymentData = paymentDoc.data();
+        console.log('✅ Transaction found in Firebase:', {
+            transactionId: transactionId,
+            status: paymentData.status,
+            amount: paymentData.amount,
+            email: paymentData.email
+        });
+        
+        // Return the Firebase data directly (source of truth)
+        return res.json({
+            success: true,
+            paymentStatus: paymentData.status,
+            ...paymentData,
+            source: 'firebase'
+        });
+        
+    } catch (error) {
+        console.error('Error checking payment status in Firebase:', error);
+        res.status(500).json({ 
+            success: false,
+            paymentStatus: 'ERROR',
+            message: 'Error checking payment status',
+            error: error.message 
+        });
+    }
+});
+
+// Manual payment status override endpoint (NEW) - for admin/support use
+app.post('/admin/update-payment-status', verifyIdToken, async (req, res) => {
+    try {
+        const { transactionId, status, statusMessage } = req.body;
+        
+        if (!transactionId || !status) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Transaction ID and status are required.' 
+            });
+        }
+        
+        // Validate status
+        const validStatuses = ['SUCCESS', 'FAILED', 'PENDING', 'CANCELLED'];
+        if (!validStatuses.includes(status.toUpperCase())) {
+            return res.status(400).json({ 
+                success: false,
+                message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+            });
+        }
+        
+        console.log(`🔄 Admin updating payment status:`, {
+            transactionId: transactionId,
+            newStatus: status,
+            adminUser: req.auth.email
+        });
+        
+        // Update the payment record in Firestore
+        await db.collection('payments').doc(transactionId).update({
+            status: status.toUpperCase(),
+            statusMessage: statusMessage || `Status updated to ${status}`,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            manuallyUpdatedBy: req.auth.email,
+            manuallyUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        console.log('✅ Payment status updated in Firebase:', transactionId);
+        
+        return res.json({
+            success: true,
+            message: 'Payment status updated successfully',
+            transactionId: transactionId,
+            newStatus: status.toUpperCase()
+        });
+        
+    } catch (error) {
+        console.error('Error updating payment status:', error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Error updating payment status',
+            error: error.message 
+        });
+    }
+});
+
+// Get all payments for a specific email (for user history)
+app.post('/user-payments', async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        if (!email) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Email is required.' 
+            });
+        }
+        
+        console.log('🔍 Fetching payment history for:', email);
+        
+        // Query Firestore for payments by email
+        const snapshot = await db.collection('payments')
+            .where('email', '==', email)
+            .orderBy('createdAt', 'desc')
+            .get();
+        
+        const payments = [];
+        snapshot.forEach(doc => {
+            payments.push({
+                transactionId: doc.id,
+                ...doc.data()
+            });
+        });
+        
+        console.log(`✅ Found ${payments.length} payments for ${email}`);
+        
+        return res.json({
+            success: true,
+            email: email,
+            paymentCount: payments.length,
+            payments: payments
+        });
+        
+    } catch (error) {
+        console.error('Error fetching user payments:', error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Error fetching payment history',
+            error: error.message 
+        });
+    }
+});
+
 // Endpoint to verify email and complete registration
 app.post('/verify-email', async (req, res) => {
     try {
@@ -650,3 +806,144 @@ app.post('/admin/delete-judge', verifyIdToken, async (req, res) => {
         res.status(500).json({ message: 'Failed to delete judge', error: error.message });
     }
 });
+
+// ============================================================
+// WEBHOOK: ioTech Payment Status Updates (NEW)
+// ============================================================
+// Configure this URL in your ioTech dashboard to receive payment updates
+app.post('/webhook/iotec-payment-status', async (req, res) => {
+    try {
+        console.log('📨 ioTech Webhook Received:', req.body);
+        
+        const { transactionId, status, statusMessage } = req.body;
+        
+        if (!transactionId) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Transaction ID is required in webhook' 
+            });
+        }
+        
+        // Normalize status from ioTech format to our format
+        const normalizedStatus = status ? status.toUpperCase() : 'UNKNOWN';
+        const validStatuses = ['SUCCESS', 'FAILED', 'PENDING', 'CANCELLED'];
+        
+        if (!validStatuses.includes(normalizedStatus)) {
+            console.warn('⚠️ Unknown status received from ioTech:', status);
+        }
+        
+        // Update Firestore with the status from ioTech
+        await db.collection('payments').doc(transactionId).update({
+            status: normalizedStatus,
+            statusMessage: statusMessage || `Status updated by ioTech: ${status}`,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            webhookReceivedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        console.log('✅ Firestore updated via webhook:', {
+            transactionId: transactionId,
+            status: normalizedStatus
+        });
+        
+        // If payment successful, send email notification
+        if (normalizedStatus === 'SUCCESS') {
+            try {
+                const paymentDoc = await db.collection('payments').doc(transactionId).get();
+                if (paymentDoc.exists) {
+                    const payment = paymentDoc.data();
+                    // Call email function
+                    await sendPaymentSuccessEmail(payment.email, payment);
+                }
+            } catch (emailError) {
+                console.error('Error sending success email:', emailError);
+            }
+        }
+        
+        // Return success to ioTech
+        return res.json({ 
+            success: true, 
+            message: 'Webhook processed successfully',
+            transactionId: transactionId
+        });
+        
+    } catch (error) {
+        console.error('❌ Webhook processing error:', error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Error processing webhook',
+            error: error.message 
+        });
+    }
+});
+
+// ============================================================
+// EMAIL NOTIFICATIONS (NEW)
+// ============================================================
+async function sendPaymentSuccessEmail(recipientEmail, paymentData) {
+    try {
+        console.log('📧 Sending success email to:', recipientEmail);
+        
+        // Log the email that would be sent
+        const emailContent = {
+            to: recipientEmail,
+            subject: '✅ Payment Successful - Competition Entry Confirmed',
+            html: `
+                <h2>Payment Successful!</h2>
+                <p>Hello,</p>
+                <p>Your payment for the competition entry has been successfully processed.</p>
+                
+                <h3>Payment Details:</h3>
+                <ul>
+                    <li><strong>Transaction ID:</strong> ${paymentData.transactionId}</li>
+                    <li><strong>Amount:</strong> ${paymentData.amount.toLocaleString()} ${paymentData.currency}</li>
+                    <li><strong>Phone:</strong> ${paymentData.phone}</li>
+                    <li><strong>Status:</strong> ${paymentData.status}</li>
+                </ul>
+                
+                <p>Your competition entry is now confirmed. Thank you for joining!</p>
+            `
+        };
+        
+        console.log('✅ Email prepared:', emailContent);
+        
+    } catch (error) {
+        console.error('Error preparing email:', error);
+        throw error;
+    }
+}
+
+async function sendPaymentFailedEmail(recipientEmail, paymentData, reason) {
+    try {
+        console.log('📧 Sending failure email to:', recipientEmail);
+        
+        const emailContent = {
+            to: recipientEmail,
+            subject: '❌ Payment Failed - Please Retry',
+            html: `
+                <h2>Payment Failed</h2>
+                <p>Hello,</p>
+                <p>Unfortunately, your payment could not be processed.</p>
+                
+                <h3>Payment Details:</h3>
+                <ul>
+                    <li><strong>Transaction ID:</strong> ${paymentData.transactionId}</li>
+                    <li><strong>Amount:</strong> ${paymentData.amount.toLocaleString()} ${paymentData.currency}</li>
+                    <li><strong>Phone:</strong> ${paymentData.phone}</li>
+                    <li><strong>Reason:</strong> ${reason}</li>
+                </ul>
+                
+                <p><strong>What to do next:</strong></p>
+                <ul>
+                    <li>Check that your mobile money account has sufficient funds</li>
+                    <li>Verify your phone number is correct</li>
+                    <li>Try again in a few moments</li>
+                </ul>
+            `
+        };
+        
+        console.log('✅ Failure email prepared:', emailContent);
+        
+    } catch (error) {
+        console.error('Error preparing failure email:', error);
+    }
+}

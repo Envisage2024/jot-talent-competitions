@@ -1074,13 +1074,15 @@
                         }
                         
                         try {
-                            const statusResponse = await fetch(`${SERVER_URL}/check-payment-status`, {
+                            // Use Firebase-backed payment verification (source of truth)
+                            const statusResponse = await fetch(`${SERVER_URL}/check-payment-status-firebase`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ transactionId: result.transactionId })
                             });
                             
                             const statusResult = await statusResponse.json();
+                            console.log('🔍 Firebase Payment Status:', statusResult.paymentStatus);
                             
                             if (statusResult.paymentStatus === 'SUCCESS') {
                                 clearInterval(pollInterval);
