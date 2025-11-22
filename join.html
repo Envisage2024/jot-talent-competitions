@@ -982,22 +982,9 @@
             paymentForm.style.pointerEvents = 'none';
 
             try {
-                // Step 1: Check balance via ioTech before payment
-                console.log('🔍 Checking balance before payment...');
-                const balanceCheckResponse = await fetch(`${SERVER_URL}/check-balance`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: phone })
-                });
-
-                const balanceCheckResult = await balanceCheckResponse.json();
+                // Pre-payment balance validation disabled — verify at payment time instead
+                console.log('ℹ️ Skipping pre-payment balance check; proceeding to payment.');
                 const requiredAmount = Number(amount);
-                
-                // Log balance information
-                if (balanceCheckResult.success && balanceCheckResult.availableBalance !== null) {
-                    console.log(`💰 User Balance: ${balanceCheckResult.availableBalance} ${balanceCheckResult.currency}`);
-                    console.log(`💳 Required Amount: ${requiredAmount}`);
-                }
 
                 // Step 2: Process payment via ioTech
                 console.log('💳 Initiating payment transaction...');
@@ -1346,10 +1333,10 @@
                 verificationStatus.textContent = '';
                 verificationStatus.style.color = 'var(--primary)';
                 
-                // Disable pay button until new verification
-                payNowBtn.disabled = true;
-                payNowBtn.style.opacity = '0.5';
-                payNowBtn.title = 'Check balance first';
+                // Keep Pay Now enabled — verify at payment time
+                payNowBtn.disabled = false;
+                payNowBtn.style.opacity = '1';
+                payNowBtn.title = 'Click to proceed with payment';
                 
                 // Clear check balance button state
                 checkBalanceBtn.disabled = false;
@@ -1375,6 +1362,12 @@
                 earlyBirdOption.disabled = true;
                 amountType.value = "10000";
                 amountInput.value = "10000";
+            }
+            // Hide pre-check balance button - using payment-time verification instead
+            try {
+                if (checkBalanceBtn) checkBalanceBtn.style.display = 'none';
+            } catch (e) {
+                console.warn('checkBalanceBtn not available to hide');
             }
             
             // Check if user has already paid (from localStorage)
