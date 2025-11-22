@@ -314,6 +314,88 @@ app.post('/process-payment', async (req, res) => {
     }
 });
 
+// Check user balance via ioTec
+app.post('/check-balance', async (req, res) => {
+    try {
+        const { phone } = req.body;
+
+        if (!phone) {
+            return res.status(400).json({ success: false, message: 'Phone number is required' });
+        }
+
+        console.log(`💰 Checking balance for phone: ${phone}`);
+
+        // Get access token
+        let accessToken;
+        try {
+            accessToken = await getAccessToken();
+        } catch (tokenError) {
+            return res.status(503).json({
+                success: false,
+                message: 'Payment gateway temporarily unavailable',
+                error: NODE_ENV === 'development' ? tokenError.message : undefined
+            });
+        }
+
+        // Query balance endpoint via ioTec
+        // ioTec provides a balance check endpoint for registered users
+        try {
+            const response = await fetch('https://pay.iotec.io/api/inquiries/balance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    phone: phone,
+                    walletId: walletId
+                }),
+                timeout: 15000
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error(`❌ Balance check failed: ${response.status}`, errorData);
+
+                return res.status(response.status).json({
+                    success: false,
+                    message: errorData.message || 'Unable to check balance',
+                    availableBalance: 0
+                });
+            }
+
+            const data = await response.json();
+            console.log('✅ Balance retrieved:', data);
+
+            res.json({
+                success: true,
+                phone: phone,
+                availableBalance: data.availableBalance || 0,
+                currency: data.currency || 'UGX',
+                message: `Current balance: ${data.availableBalance || 0} ${data.currency || 'UGX'}`
+            });
+
+        } catch (iotecError) {
+            console.error('❌ ioTec balance check error:', iotecError.message);
+            
+            // Return generic response if ioTec call fails
+            res.status(503).json({
+                success: false,
+                message: 'Unable to retrieve balance at this time. Please try again later.',
+                error: NODE_ENV === 'development' ? iotecError.message : undefined
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ Balance check error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
 // Get payment status
 app.get('/payment-status/:transactionId', async (req, res) => {
     try {

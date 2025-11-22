@@ -644,8 +644,16 @@
                     <label for="phone">Phone Number:</label>
                     <input type="tel" id="phone" placeholder="Enter your phone number" required>
                 </div>
+
+                <!-- Balance Check Section -->
+                <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 122, 0, 0.1);">
+                    <button type="button" id="checkBalanceBtn" class="auth-button" style="background: #17a2b8; margin-bottom: 10px;">
+                        <i class="fas fa-wallet"></i> Check Balance
+                    </button>
+                    <div id="balance-status" style="font-size: 0.95rem; text-align: center;"></div>
+                </div>
                 
-                <button type="submit" class="auth-button">
+                <button type="submit" class="auth-button" id="payNowBtn">
                     <i class="fas fa-lock"></i> Pay Now
                 </button>
             </form>
@@ -767,6 +775,9 @@
         const verifyCodeBtn = document.getElementById('verifyCodeBtn');
         const verificationCodeInput = document.getElementById('verificationCode');
         const verificationStatus = document.getElementById('verificationStatus');
+        const checkBalanceBtn = document.getElementById('checkBalanceBtn');
+        const balanceStatus = document.getElementById('balance-status');
+        const payNowBtn = document.getElementById('payNowBtn');
 
         // Server URL - Detect environment automatically
         // NOTE: If you need to override the server URL in production or staging,
@@ -824,6 +835,66 @@
 
         amountType.addEventListener('change', () => {
             amountInput.value = amountType.value;
+        });
+
+        // Check Balance functionality
+        let userBalance = null;
+        checkBalanceBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const phone = document.getElementById('phone').value;
+
+            if (!phone) {
+                balanceStatus.innerHTML = '<span style="color: var(--error);">Please enter a phone number first</span>';
+                return;
+            }
+
+            checkBalanceBtn.disabled = true;
+            checkBalanceBtn.textContent = 'Checking...';
+            balanceStatus.innerHTML = '<span style="color: var(--warning);">Checking your balance...</span>';
+
+            try {
+                const response = await fetch(`${SERVER_URL}/check-balance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: phone })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    userBalance = result.availableBalance;
+                    const requiredAmount = Number(amountInput.value);
+                    const hasSufficientBalance = userBalance >= requiredAmount;
+
+                    balanceStatus.innerHTML = `
+                        <div style="padding: 12px; border-radius: var(--border-radius); background: ${hasSufficientBalance ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; color: ${hasSufficientBalance ? 'var(--success)' : 'var(--error)'}; margin-bottom: 10px;">
+                            <strong>Your Balance:</strong> ${userBalance} ${result.currency || 'UGX'}<br>
+                            <strong>Required:</strong> ${requiredAmount} ${result.currency || 'UGX'}<br>
+                            <strong>Status:</strong> ${hasSufficientBalance ? '✅ Sufficient funds' : '❌ Insufficient balance'}
+                        </div>
+                    `;
+
+                    if (!hasSufficientBalance) {
+                        payNowBtn.disabled = true;
+                        payNowBtn.style.opacity = '0.5';
+                        payNowBtn.title = 'Insufficient balance to complete payment';
+                    } else {
+                        payNowBtn.disabled = false;
+                        payNowBtn.style.opacity = '1';
+                        payNowBtn.title = 'Click to proceed with payment';
+                    }
+                } else {
+                    balanceStatus.innerHTML = `<span style="color: var(--error);">❌ ${result.message || 'Unable to check balance'}</span>`;
+                    payNowBtn.disabled = true;
+                }
+            } catch (error) {
+                balanceStatus.innerHTML = `<span style="color: var(--error);">❌ Error checking balance: ${error.message}</span>`;
+                payNowBtn.disabled = true;
+                console.error('Balance check error:', error);
+            } finally {
+                checkBalanceBtn.disabled = false;
+                checkBalanceBtn.textContent = '🔄 Check Balance';
+            }
         });
 
         // Payment form submission
