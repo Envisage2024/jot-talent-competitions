@@ -1,4 +1,12 @@
 require('dotenv').config();
+
+// Validate required environment variables BEFORE loading modules
+const requiredEnvVars = ['IOTEC_CLIENT_ID', 'IOTEC_CLIENT_SECRET', 'IOTEC_WALLET_ID'];
+const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+if (missingVars.length > 0) {
+    console.warn(`⚠ Missing environment variables: ${missingVars.join(', ')}`);
+}
+
 const express = require('express');
 const cors = require('cors');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -14,17 +22,27 @@ try {
         serviceAccount = require('./serviceAccountKey.json');
     } catch (e) {
         // Fall back to environment variables for CI/CD deployments
+        // Validate Firebase env vars exist before using
+        if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL) {
+            throw new Error('Firebase credentials not configured via environment variables');
+        }
+        
         serviceAccount = {
             type: "service_account",
             project_id: process.env.FIREBASE_PROJECT_ID,
-            private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-            private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+            private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID || "",
+            private_key: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
             client_email: process.env.FIREBASE_CLIENT_EMAIL,
-            client_id: process.env.FIREBASE_CLIENT_ID,
+            client_id: process.env.FIREBASE_CLIENT_ID || "",
             auth_uri: "https://accounts.google.com/o/oauth2/auth",
             token_uri: "https://oauth2.googleapis.com/token",
             auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs"
         };
+        
+        // Validate private_key exists for Firebase init
+        if (!serviceAccount.private_key) {
+            throw new Error('FIREBASE_PRIVATE_KEY environment variable not set');
+        }
     }
 
     admin.initializeApp({
@@ -45,7 +63,7 @@ const clientSecret = process.env.IOTEC_CLIENT_SECRET;
 const walletId = process.env.IOTEC_WALLET_ID;
 
 // Configuration
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [
     'http://localhost:3000',

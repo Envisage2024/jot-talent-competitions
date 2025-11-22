@@ -13,7 +13,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 5000
+        value: 10000
       - key: IOTEC_CLIENT_ID
         value: pay-caed774a-d7d0-4a74-b751-5b77be5b3911
       - key: IOTEC_CLIENT_SECRET
@@ -25,4 +25,12 @@ services:
       - key: FIREBASE_DATABASE_URL
         value: https://jot-talent-competitions-72b9f-default-rtdb.firebaseio.com
       - key: ALLOWED_ORIGINS
-        value: http://localhost:3000,https://jot-payment-api.onrender.com
+        value: http://localhost:3000,https://jot-payment-api.onrender.com,https://jotcomps.com,https://www.jotcomps.com
+      - key: FIREBASE_PRIVATE_KEY_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_CLIENT_ID
+        sync: false
