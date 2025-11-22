@@ -668,6 +668,11 @@
             <div class="page-header">
                 <h1><i class="fas fa-trophy"></i> Join Writing Competition</h1>
                 <p>Take part in our prestigious writing competition and showcase your talent</p>
+                <div style="margin-top: 15px;">
+                    <button id="resetAllPaymentsBtn" class="small-link" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--error);">
+                        <i class="fas fa-redo"></i> Reset Payment Status
+                    </button>
+                </div>
             </div>
 
             <div class="competition-info" id="competitionsContainer">
@@ -768,6 +773,7 @@
         const paymentStatus = document.getElementById('payment-status');
         const amountType = document.getElementById('amount-type');
         const amountInput = document.getElementById('amount');
+        const resetPaymentsBtn = document.getElementById('resetAllPaymentsBtn');
         const verificationSection = document.getElementById('verificationSection');
         const verifyCodeBtn = document.getElementById('verifyCodeBtn');
         const verificationCodeInput = document.getElementById('verificationCode');
@@ -1298,6 +1304,51 @@
                 console.error('Error recording competition registration:', error);
             }
         }
+
+        // Reset payments button functionality
+        resetPaymentsBtn.addEventListener('click', function() {
+            // Confirm before resetting
+            if (confirm('Are you sure you want to reset payment status? This will clear all payment and registration data.')) {
+                // Clear localStorage entries
+                localStorage.removeItem('paymentSuccess_firstRound');
+                localStorage.removeItem('hasJoined_firstRound');
+                localStorage.removeItem('paymentTimestamp');
+                localStorage.removeItem('verificationEmail');
+                localStorage.removeItem('emailVerified_firstRound');
+                localStorage.removeItem('transactionId');
+                
+                // Reset UI state
+                payBtn.style.display = 'block';
+                payBtn.disabled = false;
+                joinBtn.style.display = 'none';
+                joinBtn.disabled = true;
+                joinBtn.textContent = 'Join Competition';
+                verificationSection.style.display = 'none';
+                
+                // Clear form fields
+                phoneInput.value = '';
+                amountInput.value = '9000';
+                amountType.value = '9000';
+                paymentMethodSelect.value = 'mtn';
+                
+                // Clear any displayed balances or status messages
+                const balanceDisplay = document.getElementById('balanceDisplay');
+                if (balanceDisplay) {
+                    balanceDisplay.textContent = '';
+                    balanceDisplay.style.display = 'none';
+                }
+                
+                const statusDisplay = document.getElementById('paymentStatus');
+                if (statusDisplay) {
+                    statusDisplay.textContent = '';
+                    statusDisplay.style.display = 'none';
+                }
+                
+                // Show success message
+                alert('✅ Payment status reset successfully. You can now process a new payment.');
+                console.log('🔄 Payment status reset by user');
+            }
+        });
 
         // Check early bird deadline on page load
         window.addEventListener('DOMContentLoaded', () => {
