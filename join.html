@@ -862,34 +862,49 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    userBalance = result.availableBalance;
                     const requiredAmount = Number(amountInput.value);
-                    const hasSufficientBalance = userBalance >= requiredAmount;
-
-                    balanceStatus.innerHTML = `
-                        <div style="padding: 12px; border-radius: var(--border-radius); background: ${hasSufficientBalance ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; color: ${hasSufficientBalance ? 'var(--success)' : 'var(--error)'}; margin-bottom: 10px;">
-                            <strong>Your Balance:</strong> ${userBalance} ${result.currency || 'UGX'}<br>
-                            <strong>Required:</strong> ${requiredAmount} ${result.currency || 'UGX'}<br>
-                            <strong>Status:</strong> ${hasSufficientBalance ? '✅ Sufficient funds' : '❌ Insufficient balance'}
-                        </div>
-                    `;
-
-                    if (!hasSufficientBalance) {
-                        payNowBtn.disabled = true;
-                        payNowBtn.style.opacity = '0.5';
-                        payNowBtn.title = 'Insufficient balance to complete payment';
-                    } else {
+                    
+                    // If balance is null (couldn't retrieve), show warning but allow proceed
+                    if (result.availableBalance === null) {
+                        balanceStatus.innerHTML = `
+                            <div style="padding: 12px; border-radius: var(--border-radius); background: rgba(245, 158, 11, 0.1); color: var(--warning); margin-bottom: 10px;">
+                                <strong>⚠️ Balance Check Unavailable</strong><br>
+                                ${result.warning || 'Unable to verify your balance online.'}<br>
+                                <strong>Required Amount:</strong> ${requiredAmount} ${result.currency || 'UGX'}<br>
+                                You can proceed, but ensure you have sufficient funds.
+                            </div>
+                        `;
                         payNowBtn.disabled = false;
                         payNowBtn.style.opacity = '1';
-                        payNowBtn.title = 'Click to proceed with payment';
+                    } else {
+                        userBalance = result.availableBalance;
+                        const hasSufficientBalance = userBalance >= requiredAmount;
+
+                        balanceStatus.innerHTML = `
+                            <div style="padding: 12px; border-radius: var(--border-radius); background: ${hasSufficientBalance ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; color: ${hasSufficientBalance ? 'var(--success)' : 'var(--error)'}; margin-bottom: 10px;">
+                                <strong>Your Balance:</strong> ${userBalance} ${result.currency || 'UGX'}<br>
+                                <strong>Required:</strong> ${requiredAmount} ${result.currency || 'UGX'}<br>
+                                <strong>Status:</strong> ${hasSufficientBalance ? '✅ Sufficient funds' : '❌ Insufficient balance'}
+                            </div>
+                        `;
+
+                        if (!hasSufficientBalance) {
+                            payNowBtn.disabled = true;
+                            payNowBtn.style.opacity = '0.5';
+                            payNowBtn.title = 'Insufficient balance to complete payment';
+                        } else {
+                            payNowBtn.disabled = false;
+                            payNowBtn.style.opacity = '1';
+                            payNowBtn.title = 'Click to proceed with payment';
+                        }
                     }
                 } else {
                     balanceStatus.innerHTML = `<span style="color: var(--error);">❌ ${result.message || 'Unable to check balance'}</span>`;
-                    payNowBtn.disabled = true;
+                    payNowBtn.disabled = false;
                 }
             } catch (error) {
-                balanceStatus.innerHTML = `<span style="color: var(--error);">❌ Error checking balance: ${error.message}</span>`;
-                payNowBtn.disabled = true;
+                balanceStatus.innerHTML = `<span style="color: var(--warning);">⚠️ Balance check error: ${error.message}. You can still proceed with payment.</span>`;
+                payNowBtn.disabled = false;
                 console.error('Balance check error:', error);
             } finally {
                 checkBalanceBtn.disabled = false;

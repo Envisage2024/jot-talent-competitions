@@ -337,10 +337,14 @@ app.post('/check-balance', async (req, res) => {
             });
         }
 
-        // Query balance endpoint via ioTec
-        // ioTec provides a balance check endpoint for registered users
+        // Try multiple ioTec balance check endpoints
+        let balanceData = null;
+        let lastError = null;
+
+        // Try endpoint 1: /api/accounts/balance
         try {
-            const response = await fetch('https://pay.iotec.io/api/inquiries/balance', {
+            console.log('📡 Trying ioTec balance endpoint 1: /api/accounts/balance');
+            const response = await fetch('https://pay.iotec.io/api/accounts/balance', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -350,41 +354,71 @@ app.post('/check-balance', async (req, res) => {
                     phone: phone,
                     walletId: walletId
                 }),
-                timeout: 15000
+                timeout: 10000
             });
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error(`❌ Balance check failed: ${response.status}`, errorData);
-
-                return res.status(response.status).json({
-                    success: false,
-                    message: errorData.message || 'Unable to check balance',
-                    availableBalance: 0
-                });
+            if (response.ok) {
+                balanceData = await response.json();
+                console.log('✅ Balance retrieved from endpoint 1:', balanceData);
+            } else {
+                lastError = `Endpoint 1 returned ${response.status}`;
+                console.warn('⚠ Endpoint 1 failed:', lastError);
             }
+        } catch (err) {
+            lastError = err.message;
+            console.warn('⚠ Endpoint 1 error:', lastError);
+        }
 
-            const data = await response.json();
-            console.log('✅ Balance retrieved:', data);
+        // Try endpoint 2: /api/wallets/{walletId}/balance if first fails
+        if (!balanceData) {
+            try {
+                console.log('📡 Trying ioTec balance endpoint 2: /api/wallets/balance');
+                const response = await fetch(`https://pay.iotec.io/api/wallets/${walletId}/balance`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    timeout: 10000
+                });
 
-            res.json({
+                if (response.ok) {
+                    balanceData = await response.json();
+                    console.log('✅ Balance retrieved from endpoint 2:', balanceData);
+                } else {
+                    lastError = `Endpoint 2 returned ${response.status}`;
+                    console.warn('⚠ Endpoint 2 failed:', lastError);
+                }
+            } catch (err) {
+                lastError = err.message;
+                console.warn('⚠ Endpoint 2 error:', lastError);
+            }
+        }
+
+        // If both endpoints fail, return fallback message
+        if (!balanceData) {
+            console.error(`❌ All balance check endpoints failed. Last error: ${lastError}`);
+            
+            // Return a fallback response that allows user to proceed
+            // In production, you may want to ask user to proceed with caution
+            return res.json({
                 success: true,
                 phone: phone,
-                availableBalance: data.availableBalance || 0,
-                currency: data.currency || 'UGX',
-                message: `Current balance: ${data.availableBalance || 0} ${data.currency || 'UGX'}`
-            });
-
-        } catch (iotecError) {
-            console.error('❌ ioTec balance check error:', iotecError.message);
-            
-            // Return generic response if ioTec call fails
-            res.status(503).json({
-                success: false,
-                message: 'Unable to retrieve balance at this time. Please try again later.',
-                error: NODE_ENV === 'development' ? iotecError.message : undefined
+                availableBalance: null,
+                currency: 'UGX',
+                message: 'Unable to retrieve live balance. Please ensure sufficient funds before proceeding.',
+                warning: 'Balance verification could not be completed. Proceed at your own risk.'
             });
         }
+
+        // Return balance data
+        res.json({
+            success: true,
+            phone: phone,
+            availableBalance: balanceData.availableBalance || balanceData.balance || 0,
+            currency: balanceData.currency || 'UGX',
+            message: `Current balance: ${balanceData.availableBalance || balanceData.balance || 0} ${balanceData.currency || 'UGX'}`
+        });
 
     } catch (error) {
         console.error('❌ Balance check error:', error);
