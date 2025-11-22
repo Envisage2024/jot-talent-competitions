@@ -1320,6 +1320,8 @@
                 // Reset UI state
                 payBtn.style.display = 'block';
                 payBtn.disabled = false;
+                payBtn.textContent = 'Pay Now';
+                payBtn.title = 'Click to proceed with payment';
                 joinBtn.style.display = 'none';
                 joinBtn.disabled = true;
                 joinBtn.textContent = 'Join Competition';
@@ -1331,18 +1333,32 @@
                 amountType.value = '9000';
                 paymentMethodSelect.value = 'mtn';
                 
-                // Clear any displayed balances or status messages
-                const balanceDisplay = document.getElementById('balanceDisplay');
-                if (balanceDisplay) {
-                    balanceDisplay.textContent = '';
-                    balanceDisplay.style.display = 'none';
-                }
+                // Clear balance display and related UI
+                balanceStatus.innerHTML = '';
+                balanceStatus.style.display = 'none';
                 
-                const statusDisplay = document.getElementById('paymentStatus');
-                if (statusDisplay) {
-                    statusDisplay.textContent = '';
-                    statusDisplay.style.display = 'none';
-                }
+                // Clear payment status
+                paymentStatus.innerHTML = '';
+                paymentStatus.style.display = 'none';
+                
+                // Clear verification code input
+                verificationCodeInput.value = '';
+                verificationStatus.textContent = '';
+                verificationStatus.style.color = 'var(--primary)';
+                
+                // Disable pay button until new verification
+                payNowBtn.disabled = true;
+                payNowBtn.style.opacity = '0.5';
+                payNowBtn.title = 'Check balance first';
+                
+                // Clear check balance button state
+                checkBalanceBtn.disabled = false;
+                checkBalanceBtn.innerHTML = '<i class="fas fa-magnifying-glass"></i> Check Balance';
+                
+                // Hide payment form
+                paymentForm.style.display = 'none';
+                paymentForm.style.opacity = '0';
+                paymentForm.style.pointerEvents = 'none';
                 
                 // Show success message
                 alert('✅ Payment status reset successfully. You can now process a new payment.');

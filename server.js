@@ -85,6 +85,135 @@ async function getAccessToken() {
     }
 }
 
+// Check Balance endpoint - NEW
+app.post('/check-balance', async (req, res) => {
+    try {
+        const { phone } = req.body;
+        
+        if (!phone) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Phone number is required.' 
+            });
+        }
+
+        console.log('🔍 Checking balance for phone:', phone);
+        
+        // Get access token
+        let accessToken;
+        try {
+            accessToken = await getAccessToken();
+        } catch (tokenError) {
+            console.error('❌ Failed to get access token:', tokenError);
+            return res.json({
+                success: true,
+                availableBalance: null,
+                accountStatus: 'PENDING_VERIFICATION',
+                currency: 'UGX',
+                phone: phone,
+                message: 'Unable to verify balance immediately. Balance will be verified during payment.',
+                error: tokenError.message
+            });
+        }
+
+        // Try Primary endpoint: ioTec Account Balance Check
+        console.log('📱 Attempting balance check via primary endpoint...');
+        try {
+            const response = await fetch('https://pay.iotec.io/api/v2/customers/check-balance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    phone: phone,
+                    walletId: walletId
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('✅ Balance check response:', data);
+
+                // Check if we got a valid balance
+                if (data.availableBalance !== null && data.availableBalance !== undefined) {
+                    return res.json({
+                        success: true,
+                        availableBalance: data.availableBalance,
+                        accountStatus: 'VERIFIED',
+                        currency: data.currency || 'UGX',
+                        phone: phone,
+                        message: 'Account verified successfully',
+                        source: 'primary'
+                    });
+                }
+            }
+        } catch (primaryError) {
+            console.log('⚠️ Primary endpoint error:', primaryError.message);
+        }
+
+        // Try Alternative endpoint: Query customer account info
+        console.log('📱 Trying alternative endpoint...');
+        try {
+            const altResponse = await fetch('https://pay.iotec.io/api/v2/customers/account-info', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    phone: phone,
+                    walletId: walletId
+                })
+            });
+
+            if (altResponse.ok) {
+                const altData = await altResponse.json();
+                console.log('✅ Alternative endpoint response:', altData);
+
+                if (altData.balance !== null && altData.balance !== undefined) {
+                    return res.json({
+                        success: true,
+                        availableBalance: altData.balance,
+                        accountStatus: 'VERIFIED',
+                        currency: altData.currency || 'UGX',
+                        phone: phone,
+                        message: 'Account verified successfully',
+                        source: 'alternative'
+                    });
+                }
+            }
+        } catch (altError) {
+            console.log('⚠️ Alternative endpoint error:', altError.message);
+        }
+
+        // Fallback: Return pending verification status
+        console.log('⚠️ All endpoints failed, returning pending status');
+        return res.json({
+            success: true,
+            availableBalance: null,
+            accountStatus: 'PENDING_VERIFICATION',
+            currency: 'UGX',
+            phone: phone,
+            message: 'Account verification in progress. Balance will be checked during payment processing.'
+        });
+
+    } catch (error) {
+        console.error('Error in check-balance:', error);
+        
+        // Always return success: true with pending status to allow payment process to continue
+        return res.json({
+            success: true,
+            availableBalance: null,
+            accountStatus: 'PENDING_VERIFICATION',
+            currency: 'UGX',
+            phone: req.body.phone || 'unknown',
+            message: 'Unable to verify balance now. Balance will be verified during payment.',
+            error: error.message
+        });
+    }
+});
+
 // Payment endpoint
 app.post('/pay', async (req, res) => {
     try {
