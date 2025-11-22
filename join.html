@@ -769,28 +769,43 @@
         const verificationStatus = document.getElementById('verificationStatus');
 
         // Server URL - Detect environment automatically
+        // NOTE: If you need to override the server URL in production or staging,
+        // set window.PAYMENT_SERVER_URL before this script runs (for example in
+        // a template or by adding a small inline script in the HTML head).
         const SERVER_URL = (function() {
+            // Explicit override (useful for debugging or staging)
+            if (window.PAYMENT_SERVER_URL && typeof window.PAYMENT_SERVER_URL === 'string') {
+                return window.PAYMENT_SERVER_URL.replace(/\/$/, '');
+            }
+
             const hostname = window.location.hostname;
-            
-            // Production deployment - Render
-            if (hostname.includes('onrender.com') || hostname.includes('jot-talent') || hostname.includes('jot-comps')) {
+
+            // Known production hosts
+            if (
+                hostname.includes('onrender.com') ||
+                hostname.includes('jot-talent') ||
+                hostname.includes('jot-comps') ||
+                hostname.includes('jotcomps') ||
+                hostname.includes('jotcomps.com')
+            ) {
                 return 'https://jot-talent-competitions.onrender.com';
             }
-            
-            // GitHub Pages deployment
+
+            // GitHub Pages or other static hosts that should call the production API
             if (hostname.includes('github.io') || hostname.includes('envisage2024')) {
                 return 'https://jot-talent-competitions.onrender.com';
             }
-            
+
             // Local development
             if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                // Use http for local dev server; developers can set PAYMENT_SERVER_URL to override
                 return 'http://localhost:5000';
             }
-            
-            // Fallback to Render production
+
+            // Default fallback to the production API (Render)
             return 'https://jot-talent-competitions.onrender.com';
         })();
-        
+
         console.log('💾 Payment Server URL:', SERVER_URL);
 
         // Set your early bird deadline here (YYYY-MM-DDTHH:MM:SS format)
