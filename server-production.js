@@ -421,25 +421,62 @@ app.post('/check-balance', async (req, res) => {
 });
 
 // Get payment status
-app.get('/payment-status/:transactionId', async (req, res) => {
+// Check payment status by transaction ID or email
+app.get('/payment-status', async (req, res) => {
     try {
-        const { transactionId } = req.params;
+        const { transactionId, email } = req.query;
 
-        if (!transactionId) {
-            return res.status(400).json({ message: 'Transaction ID required' });
+        if (!transactionId && !email) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Transaction ID or email is required' 
+            });
         }
 
-        console.log(`🔍 Checking payment status: ${transactionId}`);
+        console.log(`🔍 Checking payment status: ${transactionId || 'email=' + email}`);
+
+        // If searching by email, find the most recent payment for that email
+        if (email && !transactionId) {
+            if (adminInitAvailable && db) {
+                try {
+                    const paymentsSnapshot = await db.collection('payments')
+                        .where('email', '==', email)
+                        .orderBy('createdAt', 'desc')
+                        .limit(1)
+                        .get();
+
+                    if (!paymentsSnapshot.empty) {
+                        const paymentData = paymentsSnapshot.docs[0].data();
+                        console.log('✓ Payment found by email:', email);
+                        return res.json({
+                            success: true,
+                            ...paymentData
+                        });
+                    }
+                } catch (firestoreError) {
+                    console.error('⚠ Firestore search failed:', firestoreError.message);
+                }
+            }
+            return res.status(404).json({ 
+                success: false,
+                message: 'No payment found for this email address' 
+            });
+        }
+
+        // Search by transaction ID
+        const searchId = transactionId;
 
         // Check Firestore first if available
         if (adminInitAvailable && db) {
             try {
-                const paymentDoc = await db.collection('payments').doc(transactionId).get();
+                const paymentDoc = await db.collection('payments').doc(searchId).get();
                 if (paymentDoc.exists) {
                     const paymentData = paymentDoc.data();
-                    if (paymentData.status === 'SUCCESS' || paymentData.status === 'SUCCESSFUL' || paymentData.status === 'FAILED') {
-                        return res.json(paymentData);
-                    }
+                    console.log('✓ Payment found in Firestore:', searchId);
+                    return res.json({
+                        success: true,
+                        ...paymentData
+                    });
                 }
             } catch (firestoreError) {
                 console.error('⚠ Firestore check failed:', firestoreError.message);
@@ -452,12 +489,13 @@ app.get('/payment-status/:transactionId', async (req, res) => {
             accessToken = await getAccessToken();
         } catch (tokenError) {
             return res.status(503).json({
+                success: false,
                 message: 'Payment gateway temporarily unavailable',
                 error: NODE_ENV === 'development' ? tokenError.message : undefined
             });
         }
 
-        const response = await fetch(`https://pay.iotec.io/api/collections/${transactionId}`, {
+        const response = await fetch(`https://pay.iotec.io/api/collections/${searchId}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -469,26 +507,19 @@ app.get('/payment-status/:transactionId', async (req, res) => {
             const errorData = await response.json().catch(() => ({}));
             console.error(`❌ ioTec Status Query Error:`, errorData);
 
-            // Try Firestore fallback
-            if (adminInitAvailable && db) {
-                try {
-                    const paymentDoc = await db.collection('payments').doc(transactionId).get();
-                    if (paymentDoc.exists) {
-                        return res.json(paymentDoc.data());
-                    }
-                } catch (e) { }
-            }
-
-            return res.status(404).json({ message: 'Payment not found' });
+            return res.status(404).json({ 
+                success: false,
+                message: 'Payment not found' 
+            });
         }
 
         const data = await response.json();
-        console.log('✓ Payment status retrieved:', data.status);
+        console.log('✓ Payment status retrieved from ioTec:', data.status);
 
         // Update Firestore
         if (adminInitAvailable && db) {
             try {
-                await db.collection('payments').doc(transactionId).update({
+                await db.collection('payments').doc(searchId).update({
                     status: data.status || 'UNKNOWN',
                     statusMessage: data.statusMessage || '',
                     updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -499,7 +530,8 @@ app.get('/payment-status/:transactionId', async (req, res) => {
         }
 
         res.json({
-            transactionId: transactionId,
+            success: true,
+            transactionId: searchId,
             status: data.status,
             statusMessage: data.statusMessage,
             ...data
@@ -508,9 +540,23 @@ app.get('/payment-status/:transactionId', async (req, res) => {
     } catch (error) {
         console.error('❌ Error checking payment status:', error);
         res.status(500).json({
+            success: false,
             message: 'Internal server error',
             error: NODE_ENV === 'development' ? error.message : undefined
         });
+    }
+});
+
+// Keep old endpoint for backwards compatibility
+app.get('/payment-status/:transactionId', async (req, res) => {
+    try {
+        const { transactionId } = req.params;
+        
+        // Redirect to query parameter version
+        const query = new URLSearchParams({ transactionId });
+        res.redirect(`/payment-status?${query.toString()}`);
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });
 

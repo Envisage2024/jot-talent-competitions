@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Payment - Jot Talent Competitions</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #FF7A00;
+            --primary-light: #FF9A40;
+            --primary-dark: #E06A00;
+            --success: #10b981;
+            --success-light: #36c995;
+            --warning: #f59e0b;
+            --warning-light: #f7b136;
+            --error: #ef4444;
+            --error-light: #f26a6a;
+            --dark: #1f2937;
+            --dark-light: #374151;
+            --light: #f9fafb;
+            --lighter: #ffffff;
+            --gray: #6b7280;
+            --gray-light: #9ca3af;
+            --light-gray: #e5e7eb;
+            --border-radius: 12px;
+            --border-radius-lg: 16px;
+            --shadow: 0 4px 12px rgba(255, 122, 0, 0.1);
+            --shadow-md: 0 6px 20px rgba(255, 122, 0, 0.15);
+            --shadow-lg: 0 10px 25px rgba(255, 122, 0, 0.2);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #fef8f2 0%, #fff0e6 100%);
+            color: var(--dark);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            background-color: var(--lighter);
+            box-shadow: var(--shadow);
+            padding: 12px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            background-color: rgba(255, 255, 255, 0.95);
+            border-bottom: 1px solid rgba(255, 122, 0, 0.1);
+            margin-bottom: 40px;
+        }
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .nav-brand a {
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+        }
+
+        .logo {
+            width: 160px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            letter-spacing: 0.5px;
+            box-shadow: var(--shadow);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 8px;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--dark);
+            font-weight: 500;
+            padding: 10px 16px;
+            border-radius: var(--border-radius);
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-links a:hover, .nav-links a.active {
+            color: var(--primary);
+            background-color: rgba(255, 122, 0, 0.08);
+        }
+
+        /* Main Content */
+        .main-content {
+            padding: 40px 0;
+        }
+
+        .page-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .page-header h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--dark);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .page-header h1 i {
+            color: var(--primary);
+            background: rgba(255, 122, 0, 0.1);
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .page-header p {
+            font-size: 18px;
+            color: var(--gray);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Verification Card */
+        .verify-card {
+            background: var(--lighter);
+            border-radius: var(--border-radius-lg);
+            padding: 40px;
+            box-shadow: var(--shadow-lg);
+            max-width: 600px;
+            margin: 0 auto;
+            border: 1px solid rgba(255, 122, 0, 0.1);
+        }
+
+        .verify-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            color: var(--dark);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .form-group label i {
+            color: var(--primary);
+        }
+
+        .form-group input, .form-group select {
+            padding: 12px 16px;
+            border: 1px solid var(--light-gray);
+            border-radius: var(--border-radius);
+            font-size: 16px;
+            font-family: inherit;
+            transition: var(--transition);
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(255, 122, 0, 0.1);
+        }
+
+        .form-group small {
+            color: var(--gray-light);
+            font-size: 13px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 10px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: var(--border-radius);
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 16px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: var(--light-gray);
+            color: var(--dark);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-light);
+        }
+
+        /* Status Messages */
+        .status-message {
+            padding: 16px 20px;
+            border-radius: var(--border-radius);
+            display: none;
+            margin-top: 20px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .status-message.show {
+            display: block;
+        }
+
+        .status-success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--success);
+            color: var(--success);
+        }
+
+        .status-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--error);
+            color: var(--error);
+        }
+
+        .status-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid var(--warning);
+            color: var(--warning);
+        }
+
+        .status-info {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid #3b82f6;
+            color: #3b82f6;
+        }
+
+        /* Result Details */
+        .result-details {
+            background: rgba(255, 122, 0, 0.03);
+            border: 1px solid rgba(255, 122, 0, 0.1);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .result-details.show {
+            display: block;
+        }
+
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 122, 0, 0.05);
+        }
+
+        .detail-item:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: var(--dark);
+        }
+
+        .detail-value {
+            color: var(--dark-light);
+            text-align: right;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .badge-pending {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        .badge-failed {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 122, 0, 0.2);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .btn-primary:disabled .spinner {
+            display: inline-block;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .verify-card {
+                padding: 24px;
+            }
+
+            .page-header h1 {
+                font-size: 28px;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .detail-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .detail-value {
+                text-align: left;
+                margin-top: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <nav class="navbar">
+            <div class="nav-brand">
+                <a href="dashboard.html">
+                    <div class="logo">JOT TALENT</div>
+                </a>
+            </div>
+            <div class="nav-links">
+                <a href="dashboard.html"><i class="fas fa-home"></i> Dashboard</a>
+                <a href="join.html"><i class="fas fa-plus-circle"></i> Join</a>
+                <a href="verify-payment.html" class="active"><i class="fas fa-check-circle"></i> Verify Payment</a>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Page Header -->
+            <div class="page-header">
+                <h1><i class="fas fa-shield-alt"></i> Verify Your Payment</h1>
+                <p>Check the status of your payment and confirm successful transaction</p>
+            </div>
+
+            <!-- Verification Card -->
+            <div class="verify-card">
+                <form id="verifyForm" class="verify-form">
+                    <div class="form-group">
+                        <label><i class="fas fa-search"></i> Search By:</label>
+                        <select id="searchType">
+                            <option value="email">Email Address</option>
+                            <option value="transactionId">Transaction ID</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label id="searchLabel"><i class="fas fa-envelope"></i> Email Address</label>
+                        <input 
+                            type="email" 
+                            id="searchInput" 
+                            placeholder="Enter your email address"
+                            required
+                        >
+                        <small>The email you used to make the payment</small>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary" id="verifyBtn">
+                            <span class="spinner"></span>
+                            <i class="fas fa-search"></i> Check Status
+                        </button>
+                        <button type="reset" class="btn btn-secondary">
+                            <i class="fas fa-redo"></i> Clear
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Status Message -->
+                <div id="statusMessage" class="status-message"></div>
+
+                <!-- Result Details -->
+                <div id="resultDetails" class="result-details">
+                    <div class="detail-item">
+                        <span class="detail-label">Transaction ID:</span>
+                        <span class="detail-value" id="txnId">-</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Email:</span>
+                        <span class="detail-value" id="txnEmail">-</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Amount:</span>
+                        <span class="detail-value" id="txnAmount">-</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Currency:</span>
+                        <span class="detail-value" id="txnCurrency">-</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Payment Method:</span>
+                        <span class="detail-value" id="txnMethod">-</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Status:</span>
+                        <span class="detail-value" id="txnStatus">-</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Message:</span>
+                        <span class="detail-value" id="txnMessage">-</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Date:</span>
+                        <span class="detail-value" id="txnDate">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Server URL - Detect environment automatically
+        const SERVER_URL = (function() {
+            const hostname = window.location.hostname;
+            
+            // Production deployment - Render
+            if (hostname.includes('onrender.com') || hostname.includes('jot-talent') || hostname.includes('jot-comps')) {
+                return 'https://jot-talent-competitions.onrender.com';
+            }
+            
+            // Local development
+            if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                return 'http://localhost:5000';
+            }
+            
+            // Fallback to current origin
+            return window.location.origin;
+        })();
+
+        console.log('💾 Payment Verification Server URL:', SERVER_URL);
+
+        // DOM Elements
+        const verifyForm = document.getElementById('verifyForm');
+        const searchType = document.getElementById('searchType');
+        const searchInput = document.getElementById('searchInput');
+        const searchLabel = document.getElementById('searchLabel');
+        const verifyBtn = document.getElementById('verifyBtn');
+        const statusMessage = document.getElementById('statusMessage');
+        const resultDetails = document.getElementById('resultDetails');
+
+        // Update label and placeholder when search type changes
+        searchType.addEventListener('change', () => {
+            if (searchType.value === 'email') {
+                searchLabel.innerHTML = '<i class="fas fa-envelope"></i> Email Address';
+                searchInput.type = 'email';
+                searchInput.placeholder = 'Enter your email address';
+            } else {
+                searchLabel.innerHTML = '<i class="fas fa-receipt"></i> Transaction ID';
+                searchInput.type = 'text';
+                searchInput.placeholder = 'Enter your transaction ID (e.g., TXN_...)';
+            }
+            searchInput.focus();
+        });
+
+        // Form submission
+        verifyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await verifyPayment();
+        });
+
+        async function verifyPayment() {
+            const searchValue = searchInput.value.trim();
+            const type = searchType.value;
+
+            // Validation
+            if (!searchValue) {
+                showStatus('Please enter ' + (type === 'email' ? 'an email address' : 'a transaction ID'), 'error');
+                return;
+            }
+
+            if (type === 'email' && !isValidEmail(searchValue)) {
+                showStatus('Please enter a valid email address', 'error');
+                return;
+            }
+
+            // Disable button and show loading
+            verifyBtn.disabled = true;
+            showStatus('Checking payment status...', 'info');
+            resultDetails.classList.remove('show');
+
+            try {
+                const endpoint = `/payment-status?${type === 'email' ? 'email' : 'transactionId'}=${encodeURIComponent(searchValue)}`;
+                const response = await fetch(`${SERVER_URL}${endpoint}`);
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        showStatus('❌ Payment not found. Please check your email or transaction ID and try again.', 'error');
+                    } else {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    verifyBtn.disabled = false;
+                    return;
+                }
+
+                const data = await response.json();
+
+                if (data.success === false) {
+                    showStatus(`❌ ${data.message || 'Payment verification failed'}`, 'error');
+                    verifyBtn.disabled = false;
+                    return;
+                }
+
+                // Display payment details
+                displayPaymentDetails(data);
+                showStatus(`✅ Payment found and verified successfully!`, 'success');
+
+            } catch (error) {
+                console.error('Verification error:', error);
+                showStatus(`❌ Error: ${error.message}`, 'error');
+                verifyBtn.disabled = false;
+            }
+
+            verifyBtn.disabled = false;
+        }
+
+        function displayPaymentDetails(data) {
+            // Helper to format date
+            const formatDate = (dateString) => {
+                if (!dateString) return '-';
+                const date = new Date(dateString);
+                return date.toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            };
+
+            // Helper to get status badge
+            const getStatusBadge = (status) => {
+                const status_upper = (status || '').toUpperCase();
+                if (status_upper === 'SUCCESS' || status_upper === 'SUCCESSFUL') {
+                    return `<span class="status-badge badge-success"><i class="fas fa-check-circle"></i> Successful</span>`;
+                } else if (status_upper === 'PENDING') {
+                    return `<span class="status-badge badge-pending"><i class="fas fa-clock"></i> Pending</span>`;
+                } else if (status_upper === 'FAILED') {
+                    return `<span class="status-badge badge-failed"><i class="fas fa-times-circle"></i> Failed</span>`;
+                }
+                return `<span class="status-badge">${status}</span>`;
+            };
+
+            // Populate details
+            document.getElementById('txnId').textContent = data.transactionId || data.id || '-';
+            document.getElementById('txnEmail').textContent = data.email || '-';
+            document.getElementById('txnAmount').textContent = `${data.amount || '-'} ${data.currency || 'UGX'}`;
+            document.getElementById('txnCurrency').textContent = data.currency || '-';
+            document.getElementById('txnMethod').textContent = data.method || 'Mobile Money';
+            document.getElementById('txnStatus').innerHTML = getStatusBadge(data.status);
+            document.getElementById('txnMessage').textContent = data.statusMessage || data.message || 'Payment processed';
+            document.getElementById('txnDate').textContent = formatDate(data.createdAt || data.timestamp);
+
+            // Show result details
+            resultDetails.classList.add('show');
+        }
+
+        function showStatus(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = `status-message show status-${type}`;
+        }
+
+        function isValidEmail(email) {
+            const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return re.test(email);
+        }
+    </script>
+</body>
+</html>
