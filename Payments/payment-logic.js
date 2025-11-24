@@ -93,12 +93,14 @@ async function handlePaymentSubmit(event) {
     showPaymentStatus('Processing payment...', 'processing');
     
     // Collect payment data
+    const paymentMethod = document.getElementById('payment-method')?.value || 'MobileMoney';
     const paymentData = {
       amount: parseFloat(amountInput.value),
       phone: phoneInput.value,
       email: emailInput.value,
       name: nameInput.value,
       currency: currencySelect.value,
+      method: paymentMethod,
       timestamp: new Date().toISOString(),
       roundId: 'first-round',
       status: PAYMENT_STATUS.PROCESSING
