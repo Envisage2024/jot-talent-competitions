@@ -1,0 +1,18 @@
+IOTEC_CLIENT_ID=pay-caed774a-d7d0-4a74-b751-5b77be5b3911
+IOTEC_CLIENT_SECRET=IO-BdUCLRbm7xxYyz35WqpSu2QcPqrP3Eigg
+IOTEC_API_BASE=https://pay.iotec.io        # replace if docs use another base
+IOTEC_TOKEN_URL=https://pay.iotec.io/oauth/token   # check docs — placeholder
+IOTEC_WEBHOOK_SECRET=your_webhook_secret_from_dashboard
+BASE_URL=https://yourdomain.com            # for return_url / callback
+PORT=3000
+
+
+api key;7265fda2-48bf-4e60-a3d1-7b2286c2473a
+node server.js
+a563af4c-3137-4085-a888-93bdf3fb29b4
+cd c:\Users\BlessoGamers\Desktop\Payments
+node server.js
+npm install node-fetch
+
+Live Wallet Name (UGX): JOT TALENT COMPETITIONS
+Live Wallet ID: a563af4c-3137-4085-a888-93bdf3fb29b4

@@ -1,0 +1,173 @@
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment System - Jot Talent Competitions</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="payment-styles.css">
+    
+    <!-- Firebase App (the core Firebase SDK) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <!-- Firebase Authentication -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <!-- Cloud Firestore -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+</head>
+<body>
+    <header class="header">
+        <nav class="navbar container">
+            <div class="nav-brand">
+                <a href="index.html">
+                    <div class="logo">JOT TALENT</div>
+                </a>
+            </div>
+            <div class="nav-links user-nav">
+                <a href="index.html"><i class="fas fa-home"></i> Home</a>
+                <a href="payment.html" class="active"><i class="fas fa-wallet"></i> Payment</a>
+                <a href="#" id="logoutLink"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Payment Modal -->
+    <div class="payment-modal" id="paymentModal">
+        <div class="payment-container">
+            <span class="close-modal" id="closeModal">&times;</span>
+            <div class="payment-header">
+                <h2><i class="fas fa-wallet"></i> Mobile Money Payment</h2>
+                <p>Complete your competition entry payment</p>
+            </div>
+            
+            <form id="payment-form" class="payment-form">
+                <div class="form-group">
+                    <label for="amount-type">Payment Type:</label>
+                    <select id="amount-type">
+                        <option value="10000">Regular (UGX 10,000)</option>
+                        <option value="9000">Early Bird (UGX 9,000)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="amount">Amount (UGX):</label>
+                    <input type="number" id="amount" value="10000" readonly>
+                </div>
+                
+                <div class="form-group">
+                    <label for="customerName">Full Name:</label>
+                    <input type="text" id="customerName" placeholder="Enter your full name" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="customerEmail">Email Address:</label>
+                    <input type="email" id="customerEmail" placeholder="Enter your email for verification" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="currency">Currency:</label>
+                    <select id="currency">
+                        <option value="UGX" selected>UGX</option>
+                        <option value="USD">USD</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="phone">Phone Number:</label>
+                    <input type="tel" id="phone" placeholder="Enter your phone number" required>
+                </div>
+                
+                <button type="submit" class="auth-button">
+                    <i class="fas fa-lock"></i> Pay Now
+                </button>
+            </form>
+            
+            <div id="payment-status" class="payment-status"></div>
+        </div>
+    </div>
+
+    <main class="page-main">
+        <div class="container">
+            <div class="page-header">
+                <h1><i class="fas fa-trophy"></i> Join Writing Competition</h1>
+                <p>Take part in our prestigious writing competition and showcase your talent</p>
+                <div>
+                    <button id="resetAllPaymentsBtn" class="small-link">Reset simulated payments</button>
+                </div>
+            </div>
+
+            <div class="competition-info" id="competitionsContainer">
+                <!-- First Round: featured competition card -->
+                <section class="competition-card" id="firstRoundCard">
+                    <h2><i class="fas fa-flag-checkered"></i> First Round — Entry</h2>
+                    
+                    <div class="competition-content">
+                        <div class="competition-details">
+                            <p>Join the First Round to compete with other writers for a chance to advance to subsequent rounds. This round focuses on short-form creative writing (1,000–1,500 words). Entries should be original works, previously unpublished.</p>
+                            
+                            <div class="meta-list">
+                                <div><strong>Deadline:</strong> 2 weeks from registration</div>
+                                <div><strong>Word count:</strong> 1,000 — 1,500 words</div>
+                                <div><strong>Eligibility:</strong> Open to all registered participants</div>
+                                <div><strong>Judging:</strong> Blind review by our panel based on creativity, structure, and voice</div>
+                            </div>
+                            
+                            <p>Benefits of entering the First Round include:</p>
+                            <ul>
+                                <li>Official participation certificate</li>
+                                <li>Targeted feedback for shortlisted entries</li>
+                                <li>Opportunity to advance to the final round and win prizes</li>
+                                <li>Exposure to our writing community and judges</li>
+                            </ul>
+                            
+                            <div class="tips">
+                                <strong>Tips:</strong>
+                                <ul>
+                                    <li>Focus on a clear narrative arc and strong opening line.</li>
+                                    <li>Keep language tight and avoid unnecessary filler.</li>
+                                    <li>Proofread for grammar and flow before submitting.</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="competition-sidebar">
+                            <div class="price-tag">One-time entry fee</div>
+                            <div class="price">shs.10,000</div>
+                            
+                            <button id="payFirstRoundBtn" class="auth-button">
+                                <i class="fas fa-wallet"></i> Pay Now
+                            </button>
+                            
+                            <button id="joinFirstRoundBtn" class="auth-button" style="display: none;" disabled>
+                                <i class="fas fa-plus-circle"></i> Join Competition
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Verification Section -->
+                    <div id="verificationSection" class="verification-section" style="display: none;">
+                        <h3><i class="fas fa-envelope"></i> Verify Your Email</h3>
+                        <p>We've sent a verification code to your email. Please enter it below to complete your registration and join the competition.</p>
+                        
+                        <div class="verification-form">
+                            <input type="text" id="verificationCode" placeholder="Enter verification code">
+                            <button id="verifyCodeBtn" class="auth-button">
+                                <i class="fas fa-check-circle"></i> Verify
+                            </button>
+                        </div>
+                        
+                        <p id="verificationStatus" style="margin-top: 15px;"></p>
+                    </div>
+                    
+                    <div class="note">
+                        <strong>Note:</strong> Payment and email verification are required to participate in the competition. After successful payment and verification, you'll be able to submit your entry.
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <script src="payment-config.js"></script>
+    <script src="payment-logic.js"></script>
+</body>
+</html>
