@@ -589,6 +589,7 @@
             <div class="nav-links user-nav">
                 <a href="dashboard.html"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
                 <a href="join.html" class="active"><i class="fas fa-plus-circle"></i> Join Competition</a>
+                <a href="verify-payment.html"><i class="fas fa-check-circle"></i> Verify Payment</a>
                 <a href="submit.html"><i class="fas fa-upload"></i> Submit</a>
                 <a href="notifications.html"><i class="fas fa-bell"></i> Notifications</a>
                 <a href="feedback.html"><i class="fas fa-comments"></i> Feedback</a>
@@ -644,17 +645,8 @@
                     <label for="phone">Phone Number:</label>
                     <input type="tel" id="phone" placeholder="Enter your phone number" required>
                 </div>
-
-                <!-- Balance Verification Section -->
-                <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 122, 0, 0.1);">
-                    <label style="margin-bottom: 10px; font-size: 0.95rem; color: var(--dark);"><i class="fas fa-info-circle"></i> Mobile Money Balance Verification</label>
-                    <button type="button" id="checkBalanceBtn" class="auth-button" style="background: #17a2b8; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                        <i class="fas fa-mobile-alt"></i> Check My Balance
-                    </button>
-                    <div id="balance-status" style="font-size: 0.95rem; text-align: center;"></div>
-                </div>
                 
-                <button type="submit" class="auth-button" id="payNowBtn">
+                <button type="submit" class="auth-button">
                     <i class="fas fa-lock"></i> Pay Now
                 </button>
             </form>
@@ -668,10 +660,8 @@
             <div class="page-header">
                 <h1><i class="fas fa-trophy"></i> Join Writing Competition</h1>
                 <p>Take part in our prestigious writing competition and showcase your talent</p>
-                <div style="margin-top: 15px;">
-                    <button id="resetAllPaymentsBtn" class="small-link" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--error);">
-                        <i class="fas fa-redo"></i> Reset Payment Status
-                    </button>
+                <div>
+                    <button id="resetAllPaymentsBtn" class="small-link">Reset simulated payments</button>
                 </div>
             </div>
 
@@ -723,23 +713,8 @@
                         </div>
                     </div>
                     
-                    <!-- Verification Section -->
-                    <div id="verificationSection" class="verification-section" style="display: none;">
-                        <h3><i class="fas fa-envelope"></i> Verify Your Email</h3>
-                        <p>We've sent a verification code to your email. Please enter it below to complete your registration and join the competition.</p>
-                        
-                        <div class="verification-form">
-                            <input type="text" id="verificationCode" placeholder="Enter verification code">
-                            <button id="verifyCodeBtn" class="auth-button">
-                                <i class="fas fa-check-circle"></i> Verify
-                            </button>
-                        </div>
-                        
-                        <p id="verificationStatus" style="margin-top: 15px;"></p>
-                    </div>
-                    
                     <div class="note">
-                        <strong>Note:</strong> Payment and email verification are required to participate in the competition. After successful payment and verification, you'll be able to submit your entry.
+                        <strong>Note:</strong> After successful payment, you'll receive a transaction ID. Use it on the "Verify Payment" page to confirm your entry and join the competition.
                     </div>
                 </section>
             </div>
@@ -774,52 +749,25 @@
         const amountType = document.getElementById('amount-type');
         const amountInput = document.getElementById('amount');
         const resetPaymentsBtn = document.getElementById('resetAllPaymentsBtn');
-        const verificationSection = document.getElementById('verificationSection');
-        const verifyCodeBtn = document.getElementById('verifyCodeBtn');
-        const verificationCodeInput = document.getElementById('verificationCode');
-        const verificationStatus = document.getElementById('verificationStatus');
-        const checkBalanceBtn = document.getElementById('checkBalanceBtn');
-        const balanceStatus = document.getElementById('balance-status');
-        const payNowBtn = document.getElementById('payNowBtn');
 
         // Server URL - Detect environment automatically
-        // NOTE: If you need to override the server URL in production or staging,
-        // set window.PAYMENT_SERVER_URL before this script runs (for example in
-        // a template or by adding a small inline script in the HTML head).
         const SERVER_URL = (function() {
-            // Explicit override (useful for debugging or staging)
-            if (window.PAYMENT_SERVER_URL && typeof window.PAYMENT_SERVER_URL === 'string') {
-                return window.PAYMENT_SERVER_URL.replace(/\/$/, '');
-            }
-
             const hostname = window.location.hostname;
-
-            // Known production hosts
-            if (
-                hostname.includes('onrender.com') ||
-                hostname.includes('jot-talent') ||
-                hostname.includes('jot-comps') ||
-                hostname.includes('jotcomps') ||
-                hostname.includes('jotcomps.com')
-            ) {
-                return 'https://jot-talent-competitions.onrender.com';
+            
+            // Production deployment
+            if (hostname.includes('herokuapp.com') || hostname.includes('jot-talent')) {
+                return 'https://' + hostname;
             }
-
-            // GitHub Pages or other static hosts that should call the production API
-            if (hostname.includes('github.io') || hostname.includes('envisage2024')) {
-                return 'https://jot-talent-competitions.onrender.com';
-            }
-
+            
             // Local development
             if (hostname === 'localhost' || hostname === '127.0.0.1') {
-                // Use http for local dev server; developers can set PAYMENT_SERVER_URL to override
                 return 'http://localhost:5000';
             }
-
-            // Default fallback to the production API (Render)
-            return 'https://jot-talent-competitions.onrender.com';
+            
+            // Fallback to current origin
+            return window.location.origin;
         })();
-
+        
         console.log('💾 Payment Server URL:', SERVER_URL);
 
         // Set your early bird deadline here (YYYY-MM-DDTHH:MM:SS format)
@@ -840,117 +788,7 @@
             amountInput.value = amountType.value;
         });
 
-        // Check Balance functionality with real iotech verification
-        let userBalance = null;
-        checkBalanceBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            const phone = document.getElementById('phone').value.trim();
-
-            if (!phone) {
-                balanceStatus.innerHTML = '<span style="color: var(--error);"><i class="fas fa-exclamation-circle"></i> Please enter a phone number first</span>';
-                return;
-            }
-
-            checkBalanceBtn.disabled = true;
-            checkBalanceBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
-            balanceStatus.innerHTML = '<span style="color: var(--warning);"><i class="fas fa-hourglass-half"></i> Verifying your mobile money account via ioTech...</span>';
-
-            try {
-                console.log('🔍 Checking balance for phone:', phone);
-                
-                const response = await fetch(`${SERVER_URL}/check-balance`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: phone })
-                });
-
-                const result = await response.json();
-                console.log('✅ Balance Check Response:', result);
-
-                if (result.success) {
-                    const requiredAmount = Number(amountInput.value);
-                    
-                    // Account verified - show balance status
-                    if (result.availableBalance !== null && result.availableBalance !== undefined) {
-                        userBalance = result.availableBalance;
-                        const hasSufficientBalance = userBalance >= requiredAmount;
-
-                        console.log(`💰 Balance Found: ${userBalance} ${result.currency}`);
-                        console.log(`💳 Required: ${requiredAmount}`);
-                        console.log(`✓ Sufficient: ${hasSufficientBalance}`);
-
-                        balanceStatus.innerHTML = `
-                            <div style="padding: 15px; border-radius: var(--border-radius); background: ${hasSufficientBalance ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)'}; border: 2px solid ${hasSufficientBalance ? 'rgba(16, 185, 129, 0.5)' : 'rgba(245, 158, 11, 0.5)'}; margin-bottom: 10px;">
-                                <div style="font-weight: 700; color: ${hasSufficientBalance ? 'var(--success)' : 'var(--warning)'}; margin-bottom: 12px; font-size: 1rem;">
-                                    <i class="fas fa-${hasSufficientBalance ? 'check-circle' : 'exclamation-triangle'}"></i> Account Verified via ioTech
-                                </div>
-                                <div style="color: var(--dark); font-size: 0.95rem; line-height: 1.8;">
-                                    <div style="margin-bottom: 8px;">
-                                        <strong style="color: var(--dark-light);">📱 Phone Number:</strong> <span style="color: var(--primary); font-weight: 600;">${phone}</span>
-                                    </div>
-                                    <div style="margin-bottom: 8px;">
-                                        <strong style="color: var(--dark-light);">💰 Current Balance:</strong> <span style="color: var(--primary); font-weight: 700; font-size: 1.1rem;">${userBalance.toLocaleString()} ${result.currency || 'UGX'}</span>
-                                    </div>
-                                    <div style="margin-bottom: 12px;">
-                                        <strong style="color: var(--dark-light);">💳 Amount Required:</strong> <span style="color: var(--primary); font-weight: 600;">${requiredAmount.toLocaleString()} ${result.currency || 'UGX'}</span>
-                                    </div>
-                                    <div style="padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.1);">
-                                        <strong style="color: ${hasSufficientBalance ? 'var(--success)' : 'var(--warning)'};">
-                                            ${hasSufficientBalance ? '<i class="fas fa-check"></i> ✅ Sufficient funds available - Ready to pay!' : '<i class="fas fa-info-circle"></i> ⚠️ Insufficient funds - Please add money to your mobile money account'}
-                                        </strong>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                        payNowBtn.disabled = false;
-                        payNowBtn.style.opacity = '1';
-                        payNowBtn.title = 'Click to proceed with payment';
-                    } 
-                    // Verification pending but can proceed
-                    else {
-                        console.log('⏳ Balance check pending');
-                        
-                        balanceStatus.innerHTML = `
-                            <div style="padding: 15px; border-radius: var(--border-radius); background: rgba(245, 158, 11, 0.1); border: 2px solid rgba(245, 158, 11, 0.5); margin-bottom: 10px;">
-                                <div style="font-weight: 700; color: var(--warning); margin-bottom: 12px; font-size: 1rem;">
-                                    <i class="fas fa-mobile-alt"></i> Account Verification Pending
-                                </div>
-                                <div style="color: var(--dark); font-size: 0.95rem; line-height: 1.8;">
-                                    <div style="margin-bottom: 8px;">
-                                        <strong style="color: var(--dark-light);">📱 Phone Number:</strong> <span style="color: var(--primary); font-weight: 600;">${phone}</span>
-                                    </div>
-                                    <div style="margin-bottom: 8px;">
-                                        <strong style="color: var(--dark-light);">💳 Amount Required:</strong> <span style="color: var(--primary); font-weight: 600;">${requiredAmount.toLocaleString()} ${result.currency || 'UGX'}</span>
-                                    </div>
-                                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.1);">
-                                        <em style="color: var(--gray); display: block; margin-bottom: 6px;">${result.message || 'Your account verification is in progress with ioTech...'}</em>
-                                        <small style="color: var(--gray-light);">⏳ Balance will be verified during payment processing.</small>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                        payNowBtn.disabled = false;
-                        payNowBtn.style.opacity = '1';
-                        payNowBtn.title = 'Click to proceed with payment';
-                    }
-                } else {
-                    console.log('❌ Balance check failed:', result.message);
-                    
-                    balanceStatus.innerHTML = `<div style="padding: 12px; border-radius: var(--border-radius); background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3);"><i class="fas fa-times-circle"></i> <strong>Error:</strong> ${result.message || 'Unable to verify account'}</div>`;
-                    payNowBtn.disabled = false;
-                }
-            } catch (error) {
-                console.error('Balance check error:', error);
-                
-                balanceStatus.innerHTML = `<div style="padding: 12px; border-radius: var(--border-radius); background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3);"><i class="fas fa-exclamation-circle"></i> Verification service temporarily unavailable. You can still proceed with payment.</div>`;
-                payNowBtn.disabled = false;
-            } finally {
-                checkBalanceBtn.disabled = false;
-                checkBalanceBtn.innerHTML = '<i class="fas fa-mobile-alt"></i> Check My Balance';
-            }
-        });
-
-        // Payment form submission with real ioTech verification
+        // Payment form submission
         paymentForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const amount = amountInput.value;
@@ -961,33 +799,25 @@
 
             // Validate input
             if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-                paymentStatus.innerHTML = '<i class="fas fa-times-circle"></i> Please select a valid amount.';
+                paymentStatus.textContent = 'Please select a valid amount.';
                 paymentStatus.className = 'payment-status payment-error';
                 return;
             }
             if (!phone) {
-                paymentStatus.innerHTML = '<i class="fas fa-times-circle"></i> Please enter a phone number.';
+                paymentStatus.textContent = 'Please enter a phone number.';
                 paymentStatus.className = 'payment-status payment-error';
                 return;
             }
             if (!email || !isValidEmail(email)) {
-                paymentStatus.innerHTML = '<i class="fas fa-times-circle"></i> Please enter a valid email address.';
+                paymentStatus.textContent = 'Please enter a valid email address.';
                 paymentStatus.className = 'payment-status payment-error';
                 return;
             }
 
-            paymentStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing payment...';
+            paymentStatus.textContent = 'Processing payment...';
             paymentStatus.className = 'payment-status payment-processing';
-            paymentForm.style.opacity = '0.6';
-            paymentForm.style.pointerEvents = 'none';
 
             try {
-                // Pre-payment balance validation disabled — verify at payment time instead
-                console.log('ℹ️ Skipping pre-payment balance check; proceeding to payment.');
-                const requiredAmount = Number(amount);
-
-                // Step 2: Process payment via ioTech
-                console.log('💳 Initiating payment transaction...');
                 const response = await fetch(`${SERVER_URL}/process-payment`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -1002,267 +832,38 @@
                 });
 
                 const result = await response.json();
-                console.log('📊 Payment Response:', result);
 
-                // Step 3: Verify payment was actually successful
-                if (result.success && result.paymentStatus === 'SUCCESS') {
-                    // Payment actually succeeded
-                    console.log('✅ Payment Successful! Transaction ID:', result.transactionId);
-                    
-                    paymentStatus.innerHTML = `
-                        <div style="text-align: center;">
-                            <i class="fas fa-check-circle" style="font-size: 24px; color: var(--success); margin-bottom: 10px; display: block;"></i>
-                            <strong style="display: block; margin-bottom: 8px;">✅ Payment Successful!</strong>
-                            <div style="font-size: 0.9rem; line-height: 1.6;">
-                                <strong>Transaction ID:</strong> ${result.transactionId || 'N/A'}<br>
-                                <strong>Amount Paid:</strong> ${requiredAmount.toLocaleString()} ${currency}<br>
-                                <strong>Phone:</strong> ${phone}<br>
-                                <em>Please check your email for verification code.</em>
-                            </div>
-                        </div>
-                    `;
+                if (result.success) {
+                    paymentStatus.textContent = 'Payment successful! Your transaction ID: ' + (result.transactionId || '');
                     paymentStatus.className = 'payment-status payment-success';
-                    
-                    // Show verification section
-                    verificationSection.style.display = 'block';
                     
                     // Store payment success in localStorage
                     localStorage.setItem('paymentSuccess_firstRound', 'true');
-                    localStorage.setItem('paymentEmail', email);
                     localStorage.setItem('paymentTimestamp', new Date().getTime().toString());
                     localStorage.setItem('transactionId', result.transactionId || '');
                     
-                    // Generate and send verification code
-                    await sendVerificationCode(email);
-                    
-                    // Close modal after 4 seconds
+                    // Close modal after 3 seconds
                     setTimeout(() => {
                         paymentModal.style.display = 'none';
-                        paymentForm.style.opacity = '1';
-                        paymentForm.style.pointerEvents = 'auto';
-                    }, 4000);
-                    
-                } else if (result.success && result.paymentStatus === 'PENDING') {
-                    // Payment is pending
-                    console.log('⏳ Payment Pending. Transaction ID:', result.transactionId);
-                    
-                    paymentStatus.innerHTML = `
-                        <div style="text-align: center;">
-                            <i class="fas fa-hourglass-half" style="font-size: 24px; color: var(--warning); margin-bottom: 10px; display: block;"></i>
-                            <strong style="display: block; margin-bottom: 8px;">⏳ Payment Pending</strong>
-                            <div style="font-size: 0.9rem; line-height: 1.6;">
-                                <strong>Transaction ID:</strong> ${result.transactionId || 'N/A'}<br>
-                                <strong>Amount:</strong> ${requiredAmount.toLocaleString()} ${currency}<br>
-                                <strong>Phone:</strong> ${phone}<br>
-                                <em>Your payment is being processed. Please wait...</em>
-                            </div>
-                        </div>
-                    `;
-                    paymentStatus.className = 'payment-status payment-processing';
-                    
-                    // Poll for payment status
-                    let pollCount = 0;
-                    const pollInterval = setInterval(async () => {
-                        pollCount++;
-                        if (pollCount > 12) { // Stop after 60 seconds
-                            clearInterval(pollInterval);
-                            paymentStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Payment verification timed out. Please contact support.';
-                            paymentStatus.className = 'payment-status payment-error';
-                            paymentForm.style.opacity = '1';
-                            paymentForm.style.pointerEvents = 'auto';
-                            return;
-                        }
-                        
-                        try {
-                            // Use Firebase-backed payment verification (source of truth)
-                            const statusResponse = await fetch(`${SERVER_URL}/check-payment-status-firebase`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ transactionId: result.transactionId })
-                            });
-                            
-                            const statusResult = await statusResponse.json();
-                            console.log('🔍 Firebase Payment Status:', statusResult.paymentStatus);
-                            
-                            if (statusResult.paymentStatus === 'SUCCESS') {
-                                clearInterval(pollInterval);
-                                console.log('✅ Payment Confirmed!');
-                                
-                                paymentStatus.innerHTML = `
-                                    <div style="text-align: center;">
-                                        <i class="fas fa-check-circle" style="font-size: 24px; color: var(--success); margin-bottom: 10px; display: block;"></i>
-                                        <strong style="display: block; margin-bottom: 8px;">✅ Payment Successful!</strong>
-                                        <div style="font-size: 0.9rem; line-height: 1.6;">
-                                            <strong>Transaction ID:</strong> ${result.transactionId}<br>
-                                            <strong>Amount Paid:</strong> ${requiredAmount.toLocaleString()} ${currency}<br>
-                                            <strong>Phone:</strong> ${phone}<br>
-                                            <em>Please check your email for verification code.</em>
-                                        </div>
-                                    </div>
-                                `;
-                                paymentStatus.className = 'payment-status payment-success';
-                                
-                                verificationSection.style.display = 'block';
-                                localStorage.setItem('paymentSuccess_firstRound', 'true');
-                                localStorage.setItem('paymentEmail', email);
-                                localStorage.setItem('transactionId', result.transactionId);
-                                
-                                await sendVerificationCode(email);
-                                
-                                setTimeout(() => {
-                                    paymentModal.style.display = 'none';
-                                    paymentForm.style.opacity = '1';
-                                    paymentForm.style.pointerEvents = 'auto';
-                                }, 3000);
-                            }
-                        } catch (err) {
-                            console.error('Error checking payment status:', err);
-                        }
-                    }, 5000);
+                    }, 3000);
                     
                 } else {
-                    // Payment failed
-                    console.log('❌ Payment Failed:', result.message);
-                    
-                    let errorMessage = result.message || 'Unknown error';
-                    let errorDetails = '';
-                    
-                    if (errorMessage.includes('Insufficient balance')) {
-                        errorDetails = `Your account has insufficient funds. Required: ${requiredAmount.toLocaleString()} ${currency}`;
-                    } else if (errorMessage.includes('Invalid phone')) {
-                        errorDetails = 'The phone number provided is invalid or not registered with a mobile money provider.';
-                    } else if (errorMessage.includes('timeout')) {
-                        errorDetails = 'The payment request timed out. Please try again.';
+                    // Check for insufficient balance message
+                    if (result.message && result.message.includes('Insufficient balance')) {
+                        paymentStatus.textContent = `Payment failed: ${result.message}`;
                     } else {
-                        errorDetails = errorMessage;
+                        paymentStatus.textContent = `Payment failed: ${result.message || 'Unknown error'}`;
                     }
-                    
-                    paymentStatus.innerHTML = `
-                        <div style="text-align: center;">
-                            <i class="fas fa-times-circle" style="font-size: 24px; color: var(--error); margin-bottom: 10px; display: block;"></i>
-                            <strong style="display: block; margin-bottom: 8px;">❌ Payment Unsuccessful</strong>
-                            <div style="font-size: 0.9rem; line-height: 1.6;">
-                                <strong>Reason:</strong> ${errorDetails}<br>
-                                <strong>Amount:</strong> ${requiredAmount.toLocaleString()} ${currency}<br>
-                                <strong>Phone:</strong> ${phone}<br>
-                                <em>Please try again or contact support.</em>
-                            </div>
-                        </div>
-                    `;
                     paymentStatus.className = 'payment-status payment-error';
-                    paymentForm.style.opacity = '1';
-                    paymentForm.style.pointerEvents = 'auto';
                 }
             } catch (error) {
-                console.error('Payment error:', error);
-                
-                paymentStatus.innerHTML = `
-                    <div style="text-align: center;">
-                        <i class="fas fa-exclamation-triangle" style="font-size: 24px; color: var(--error); margin-bottom: 10px; display: block;"></i>
-                        <strong style="display: block; margin-bottom: 8px;">❌ Payment Error</strong>
-                        <div style="font-size: 0.9rem; line-height: 1.6;">
-                            <strong>Error:</strong> ${error.message}<br>
-                            <em>Please try again or contact support.</em>
-                        </div>
-                    </div>
-                `;
+                paymentStatus.textContent = 'Error: ' + error.message;
                 paymentStatus.className = 'payment-status payment-error';
-                paymentForm.style.opacity = '1';
-                paymentForm.style.pointerEvents = 'auto';
+                console.error('Payment error:', error);
             }
         });
 
         // Send verification code to email
-        async function sendVerificationCode(email) {
-            try {
-                // Generate a random 6-digit code
-                const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-                
-                // Store the code in Firestore with email and timestamp
-                await db.collection('verificationCodes').doc(email).set({
-                    code: verificationCode,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    used: false
-                });
-                
-                // In a real application, you would send this code via email
-                // For simulation purposes, we'll just log it and show an alert
-                console.log(`Verification code for ${email}: ${verificationCode}`);
-                alert(`SIMULATION: Verification code sent to ${email}: ${verificationCode}\nIn production, this would be sent via email.`);
-                
-                // Store the email in localStorage for verification
-                localStorage.setItem('verificationEmail', email);
-                
-            } catch (error) {
-                console.error('Error sending verification code:', error);
-                alert('Error sending verification code. Please try again.');
-            }
-        }
-
-        // Verify code entered by user
-        verifyCodeBtn.addEventListener('click', async () => {
-            const code = verificationCodeInput.value.trim();
-            const email = localStorage.getItem('verificationEmail');
-            
-            if (!code || code.length !== 6) {
-                verificationStatus.textContent = 'Please enter a valid 6-digit code.';
-                verificationStatus.style.color = 'var(--error)';
-                return;
-            }
-            
-            try {
-                // Get the verification code from Firestore
-                const doc = await db.collection('verificationCodes').doc(email).get();
-                
-                if (!doc.exists) {
-                    verificationStatus.textContent = 'No verification code found for your email.';
-                    verificationStatus.style.color = 'var(--error)';
-                    return;
-                }
-                
-                const verificationData = doc.data();
-                
-                // Check if code matches and is not expired (10 minutes)
-                const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-                const codeTimestamp = verificationData.timestamp.toDate();
-                
-                if (verificationData.code === code && 
-                    !verificationData.used && 
-                    codeTimestamp > tenMinutesAgo) {
-                    
-                    // Mark code as used
-                    await db.collection('verificationCodes').doc(email).update({
-                        used: true
-                    });
-                    
-                    // Update UI to show success
-                    verificationStatus.textContent = 'Email verified successfully! You can now join the competition.';
-                    verificationStatus.style.color = 'var(--success)';
-                    
-                    // Show join button
-                    payBtn.style.display = 'none';
-                    joinBtn.style.display = 'block';
-                    joinBtn.disabled = false;
-                    
-                    // Store verification success
-                    localStorage.setItem('emailVerified_firstRound', 'true');
-                    
-                } else if (verificationData.used) {
-                    verificationStatus.textContent = 'This verification code has already been used.';
-                    verificationStatus.style.color = 'var(--error)';
-                } else if (codeTimestamp <= tenMinutesAgo) {
-                    verificationStatus.textContent = 'This verification code has expired.';
-                    verificationStatus.style.color = 'var(--error)';
-                } else {
-                    verificationStatus.textContent = 'Invalid verification code. Please try again.';
-                    verificationStatus.style.color = 'var(--error)';
-                }
-            } catch (error) {
-                console.error('Error verifying code:', error);
-                verificationStatus.textContent = 'Error verifying code. Please try again.';
-                verificationStatus.style.color = 'var(--error)';
-            }
-        });
 
         joinBtn.addEventListener('click', function() {
             alert('You have successfully joined the competition!');
@@ -1276,83 +877,16 @@
             recordCompetitionRegistration();
         });
 
-        // Record competition registration in Firestore
-        async function recordCompetitionRegistration() {
-            try {
-                const userId = auth.currentUser ? auth.currentUser.uid : 'guest';
-                const email = localStorage.getItem('verificationEmail');
-                
-                await db.collection('competitionRegistrations').doc(userId).set({
-                    userId: userId,
-                    email: email,
-                    competition: 'firstRound',
-                    registrationDate: firebase.firestore.FieldValue.serverTimestamp(),
-                    status: 'registered'
-                });
-            } catch (error) {
-                console.error('Error recording competition registration:', error);
-            }
-        }
 
-        // Reset payments button functionality
         resetPaymentsBtn.addEventListener('click', function() {
-            // Confirm before resetting
-            if (confirm('Are you sure you want to reset payment status? This will clear all payment and registration data.')) {
-                // Clear localStorage entries
-                localStorage.removeItem('paymentSuccess_firstRound');
-                localStorage.removeItem('hasJoined_firstRound');
-                localStorage.removeItem('paymentTimestamp');
-                localStorage.removeItem('verificationEmail');
-                localStorage.removeItem('emailVerified_firstRound');
-                localStorage.removeItem('transactionId');
-                
-                // Reset UI state
-                payBtn.style.display = 'block';
-                payBtn.disabled = false;
-                payBtn.textContent = 'Pay Now';
-                payBtn.title = 'Click to proceed with payment';
-                joinBtn.style.display = 'none';
-                joinBtn.disabled = true;
-                joinBtn.textContent = 'Join Competition';
-                verificationSection.style.display = 'none';
-                
-                // Clear form fields
-                phoneInput.value = '';
-                amountInput.value = '9000';
-                amountType.value = '9000';
-                paymentMethodSelect.value = 'mtn';
-                
-                // Clear balance display and related UI
-                balanceStatus.innerHTML = '';
-                balanceStatus.style.display = 'none';
-                
-                // Clear payment status
-                paymentStatus.innerHTML = '';
-                paymentStatus.style.display = 'none';
-                
-                // Clear verification code input
-                verificationCodeInput.value = '';
-                verificationStatus.textContent = '';
-                verificationStatus.style.color = 'var(--primary)';
-                
-                // Keep Pay Now enabled — verify at payment time
-                payNowBtn.disabled = false;
-                payNowBtn.style.opacity = '1';
-                payNowBtn.title = 'Click to proceed with payment';
-                
-                // Clear check balance button state
-                checkBalanceBtn.disabled = false;
-                checkBalanceBtn.innerHTML = '<i class="fas fa-magnifying-glass"></i> Check Balance';
-                
-                // Hide payment form
-                paymentForm.style.display = 'none';
-                paymentForm.style.opacity = '0';
-                paymentForm.style.pointerEvents = 'none';
-                
-                // Show success message
-                alert('✅ Payment status reset successfully. You can now process a new payment.');
-                console.log('🔄 Payment status reset by user');
-            }
+            payBtn.style.display = 'block';
+            joinBtn.style.display = 'none';
+            joinBtn.disabled = true;
+            joinBtn.textContent = 'Join Competition';
+            localStorage.removeItem('paymentSuccess_firstRound');
+            localStorage.removeItem('hasJoined_firstRound');
+            localStorage.removeItem('paymentTimestamp');
+            alert('Payment status has been reset. You can simulate a new payment.');
         });
 
         // Check early bird deadline on page load
@@ -1365,32 +899,8 @@
                 amountType.value = "10000";
                 amountInput.value = "10000";
             }
-            // Hide pre-check balance button - using payment-time verification instead
-            try {
-                if (checkBalanceBtn) checkBalanceBtn.style.display = 'none';
-            } catch (e) {
-                console.warn('checkBalanceBtn not available to hide');
-            }
             
-            // Check if user has already paid (from localStorage)
-            if (localStorage.getItem('paymentSuccess_firstRound') === 'true') {
-                payBtn.style.display = 'none';
-                
-                // Check if user has already verified their email
-                if (localStorage.getItem('emailVerified_firstRound') === 'true') {
-                    joinBtn.style.display = 'block';
-                    joinBtn.disabled = false;
-                    verificationSection.style.display = 'none';
-                } else {
-                    verificationSection.style.display = 'block';
-                }
-                
-                // Check if user has already joined
-                if (localStorage.getItem('hasJoined_firstRound') === 'true') {
-                    joinBtn.disabled = true;
-                    joinBtn.textContent = 'Joined';
-                }
-            }
+            // User should now use verify-payment.html to check status
         });
 
         // Helper function to validate email
@@ -1401,4 +911,3 @@
     </script>
 </body>
 </html>
-

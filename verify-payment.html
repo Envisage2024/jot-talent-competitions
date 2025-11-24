@@ -445,20 +445,20 @@
                     <div class="form-group">
                         <label><i class="fas fa-search"></i> Search By:</label>
                         <select id="searchType">
+                            <option value="transactionId" selected>Transaction ID</option>
                             <option value="email">Email Address</option>
-                            <option value="transactionId">Transaction ID</option>
                         </select>
                     </div>
 
                     <div class="form-group">
-                        <label id="searchLabel"><i class="fas fa-envelope"></i> Email Address</label>
+                        <label id="searchLabel"><i class="fas fa-receipt"></i> Transaction ID</label>
                         <input 
-                            type="email" 
+                            type="text" 
                             id="searchInput" 
-                            placeholder="Enter your email address"
+                            placeholder="Enter your transaction ID (e.g., TXN_...)"
                             required
                         >
-                        <small>The email you used to make the payment</small>
+                        <small>You'll receive this after successful payment</small>
                     </div>
 
                     <div class="button-group">
@@ -580,6 +580,11 @@
                 return;
             }
 
+            if (type === 'transactionId' && searchValue.length < 10) {
+                showStatus('Transaction ID should be at least 10 characters. Please check your transaction ID.', 'error');
+                return;
+            }
+
             if (type === 'email' && !isValidEmail(searchValue)) {
                 showStatus('Please enter a valid email address', 'error');
                 return;
@@ -592,13 +597,18 @@
 
             try {
                 const endpoint = `/payment-status?${type === 'email' ? 'email' : 'transactionId'}=${encodeURIComponent(searchValue)}`;
+                console.log('Fetching from:', SERVER_URL + endpoint);
                 const response = await fetch(`${SERVER_URL}${endpoint}`);
 
                 if (!response.ok) {
                     if (response.status === 404) {
-                        showStatus('❌ Payment not found. Please check your email or transaction ID and try again.', 'error');
+                        if (type === 'transactionId') {
+                            showStatus(`❌ Transaction not found: "${searchValue}". Make sure you're using the exact transaction ID from your payment confirmation. Server: ${SERVER_URL}`, 'error');
+                        } else {
+                            showStatus('❌ No payments found for this email address. Please check and try again.', 'error');
+                        }
                     } else {
-                        throw new Error(`HTTP ${response.status}`);
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
                     verifyBtn.disabled = false;
                     return;
@@ -618,7 +628,7 @@
 
             } catch (error) {
                 console.error('Verification error:', error);
-                showStatus(`❌ Error: ${error.message}`, 'error');
+                showStatus(`❌ Error: ${error.message}. Check browser console for details.`, 'error');
                 verifyBtn.disabled = false;
             }
 
