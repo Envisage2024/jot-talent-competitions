@@ -79,16 +79,22 @@ const DEFAULT_ORIGINS = [
 ];
 
 // For production, make sure frontend URLs are in ALLOWED_ORIGINS
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? 
-    process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) :
-    [
-      'https://envisage2024.github.io',
-      'https://jotcomps.com',
-      'https://www.jotcomps.com',
-      'http://localhost:10000',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000'
-    ];
+// Always include default origins, plus any from environment
+const DEFAULT_ALLOWED = [
+  'https://envisage2024.github.io',
+  'https://jotcomps.com',
+  'https://www.jotcomps.com',
+  'http://localhost:10000',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+
+const ENV_ORIGINS = process.env.ALLOWED_ORIGINS ? 
+    process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : 
+    [];
+
+// Merge both lists and remove duplicates
+const ALLOWED_ORIGINS = [...new Set([...DEFAULT_ALLOWED, ...ENV_ORIGINS])];
 
 console.log(`🚀 Starting Payment Server`);
 console.log(`   Environment: ${NODE_ENV}`);
