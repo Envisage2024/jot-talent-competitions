@@ -203,7 +203,17 @@ async function getAccessToken() {
 }
 
 // Payment endpoint - Process payment
+app.options('/process-payment', cors(corsOptions));
 app.post('/process-payment', async (req, res) => {
+    // Set CORS headers explicitly for this response
+    const origin = req.headers.origin;
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || NODE_ENV === 'development') {
+        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    }
+    
     try {
         const { amount, method, phone, email, name, currency = 'UGX', competitionId } = req.body;
 
@@ -330,7 +340,17 @@ app.post('/process-payment', async (req, res) => {
 });
 
 // Check user balance via ioTec - Using account verification method
+app.options('/check-balance', cors(corsOptions));
 app.post('/check-balance', async (req, res) => {
+    // Set CORS headers explicitly for this response
+    const origin = req.headers.origin;
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || NODE_ENV === 'development') {
+        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    }
+    
     try {
         const { phone } = req.body;
 
@@ -576,7 +596,17 @@ app.get('/payment-status/:transactionId', async (req, res) => {
 });
 
 // Send verification code
+app.options('/send-verification-code', cors(corsOptions));
 app.post('/send-verification-code', async (req, res) => {
+    // Set CORS headers explicitly for this response
+    const origin = req.headers.origin;
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || NODE_ENV === 'development') {
+        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    }
+    
     try {
         const { email } = req.body;
 
@@ -620,7 +650,17 @@ app.post('/send-verification-code', async (req, res) => {
 });
 
 // Verify email code
+app.options('/verify-email', cors(corsOptions));
 app.post('/verify-email', async (req, res) => {
+    // Set CORS headers explicitly for this response
+    const origin = req.headers.origin;
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || NODE_ENV === 'development') {
+        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    }
+    
     try {
         const { email, verificationCode, transactionId } = req.body;
 
