@@ -70,6 +70,7 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const DEFAULT_ORIGINS = [
     'http://localhost:3000',
     'http://localhost:5500',
+    'http://localhost:10000',
     'http://127.0.0.1:8000',
     'https://jot-talent-competitions.onrender.com',
     'https://jotcomps.com',
@@ -77,32 +78,54 @@ const DEFAULT_ORIGINS = [
     'https://envisage2024.github.io'
 ];
 
-const ALLOWED_ORIGINS = [
-  'https://envisage2024.github.io',
-  'https://jotcomps.com',
-  'https://www.jotcomps.com'
-  // add more if needed
-];
+// For production, make sure frontend URLs are in ALLOWED_ORIGINS
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? 
+    process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) :
+    [
+      'https://envisage2024.github.io',
+      'https://jotcomps.com',
+      'https://www.jotcomps.com',
+      'http://localhost:10000',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
 
 console.log(`🚀 Starting Payment Server`);
 console.log(`   Environment: ${NODE_ENV}`);
 console.log(`   Port: ${PORT}`);
 console.log(`   CORS Origins:`, ALLOWED_ORIGINS);
+console.log(`   Public URL: https://jot-talent-competitions.onrender.com`);
 
 const app = express();
 
 // Enhanced CORS configuration with explicit origin checking
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin)) {
-      console.log(`[CORS DEV] Allowing ${origin}`);
+    // Allow requests with no origin (like mobile apps, curl requests, or Postman)
+    if (!origin) {
+      console.log(`[CORS] Request with no origin allowed`);
       return callback(null, true);
     }
+    
+    // Check if origin is in whitelist
+    if (ALLOWED_ORIGINS.includes(origin)) {
+      console.log(`[CORS] ✓ Allowing ${origin}`);
+      return callback(null, true);
+    }
+    
+    // In development, allow more origins for testing
+    if (NODE_ENV === 'development') {
+      console.log(`[CORS DEV] Allowing ${origin} in development mode`);
+      return callback(null, true);
+    }
+    
     console.error(`[CORS REJECTED] Origin ${origin} not in whitelist: ${ALLOWED_ORIGINS.join(', ')}`);
     return callback(new Error(`CORS policy: origin ${origin} not allowed`));
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  maxAge: 86400
 };
 
 // Apply CORS to all routes
@@ -119,16 +142,19 @@ app.options('*', cors(corsOptions));
 app.use((req, res, next) => {
     const origin = req.headers.origin;
     
+    // Allow requests from whitelisted origins or in development mode
     if (!origin || ALLOWED_ORIGINS.includes(origin) || NODE_ENV === 'development') {
         res.header('Access-Control-Allow-Origin', origin || '*');
         res.header('Access-Control-Allow-Credentials', 'true');
         res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
         res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
         res.header('Access-Control-Max-Age', '86400');
+        res.header('Access-Control-Expose-Headers', 'Content-Length, X-JSON-Response-Size');
     }
     
-    // Handle OPTIONS requests
+    // Handle OPTIONS requests (preflight)
     if (req.method === 'OPTIONS') {
+        console.log(`[CORS PREFLIGHT] ${req.method} ${req.path} from ${origin || 'no-origin'}`);
         return res.sendStatus(200);
     }
     

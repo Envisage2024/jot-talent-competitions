@@ -3,7 +3,7 @@
 
 services:
   - type: web
-    name: jot-payment-api
+    name: jot-talent-competitions
     runtime: node
     plan: free
     buildCommand: npm install
@@ -25,7 +25,7 @@ services:
       - key: FIREBASE_DATABASE_URL
         value: https://jot-talent-competitions-72b9f-default-rtdb.firebaseio.com
       - key: ALLOWED_ORIGINS
-        value: http://localhost:3000,https://jot-payment-api.onrender.com,https://jotcomps.com,https://www.jotcomps.com,https://envisage2024.github.io
+        value: http://localhost:3000,http://localhost:10000,https://jot-talent-competitions.onrender.com,https://jotcomps.com,https://www.jotcomps.com,https://envisage2024.github.io
       - key: FIREBASE_PRIVATE_KEY_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY

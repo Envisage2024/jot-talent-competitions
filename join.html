@@ -428,6 +428,8 @@
             max-width: 500px;
             box-shadow: var(--shadow-lg);
             position: relative;
+            height: auto;
+            overflow-y: auto;
         }
 
         .close-modal {
@@ -495,7 +497,7 @@
             background-color: rgba(239, 68, 68, 0.1);
             color: var(--error);
         }
-
+        
         /* Verification Section */
         .verification-section {
             margin-top: 20px;
@@ -755,18 +757,30 @@
         // Server URL - Detect environment automatically
         const SERVER_URL = (function() {
             const hostname = window.location.hostname;
+            const protocol = window.location.protocol;
             
             // Local development
             if (hostname === 'localhost' || hostname === '127.0.0.1') {
-                return 'http://localhost:5000';
+                return 'http://localhost:10000';
             }
             
-            // Production deployment on Render
-            // Use the Render backend URL explicitly
-            return 'https://jot-payment-api.onrender.com';
+            // GitHub Pages (envisage2024.github.io)
+            if (hostname === 'envisage2024.github.io') {
+                return 'https://jot-talent-competitions.onrender.com';
+            }
+            
+            // Custom domains (jotcomps.com, www.jotcomps.com)
+            if (hostname.includes('jotcomps.com')) {
+                return 'https://jot-talent-competitions.onrender.com';
+            }
+            
+            // Fallback to Render backend URL
+            return 'https://jot-talent-competitions.onrender.com';
         })();
         
         console.log('💾 Payment Server URL:', SERVER_URL);
+        console.log('📍 Current hostname:', window.location.hostname);
+        console.log('🌐 Current protocol:', window.location.protocol);
 
         // Set your early bird deadline here (YYYY-MM-DDTHH:MM:SS format)
         const earlyBirdDeadline = new Date('2025-09-09T19:20:00');
@@ -826,9 +840,15 @@
                     currency: currency
                 });
 
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
                 const response = await fetch(`${SERVER_URL}/process-payment`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    },
                     body: JSON.stringify({
                         method: "MobileMoney",
                         amount: amount,
@@ -836,8 +856,11 @@
                         email: email,
                         name: name,
                         currency: currency
-                    })
+                    }),
+                    signal: controller.signal
                 });
+
+                clearTimeout(timeoutId);
 
                 console.log('📨 Response status:', response.status);
                 console.log('📨 Response headers:', response.headers.get('content-type'));
@@ -853,9 +876,21 @@
                     console.error('❌ Backend Response (Status ' + response.status + '):', text.substring(0, 500));
                     
                     if (text.trim().startsWith('<')) {
-                        paymentStatus.textContent = `Error: Server returned HTML instead of JSON (Status ${response.status}). Please check if the backend server is running and accessible at ${SERVER_URL}`;
+                        paymentStatus.innerHTML = `
+                            <div style="color: red;">
+                                <strong>Server Error (${response.status})</strong>
+                                <p>The backend server is not responding correctly. It may be:</p>
+                                <ul>
+                                    <li>Still starting up on Render.com</li>
+                                    <li>Having CORS configuration issues</li>
+                                    <li>Temporarily unavailable</li>
+                                </ul>
+                                <p>Please try again in a few moments or contact support.</p>
+                                <p style="font-size: 12px;">Server: ${SERVER_URL}</p>
+                            </div>
+                        `;
                     } else {
-                        paymentStatus.textContent = `Error: Invalid response from server. Response: ${text.substring(0, 100)}`;
+                        paymentStatus.textContent = `Error: Invalid response from server (${response.status}). Response: ${text.substring(0, 100)}`;
                     }
                     paymentStatus.className = 'payment-status payment-error';
                     console.error('Payment processing error: Invalid response format');
@@ -886,7 +921,25 @@
                     paymentStatus.className = 'payment-status payment-error';
                 }
             } catch (error) {
-                paymentStatus.textContent = 'Error: ' + error.message;
+                if (error.name === 'AbortError') {
+                    paymentStatus.textContent = 'Request timed out. Please check your connection and try again.';
+                } else if (error.message === 'Failed to fetch') {
+                    paymentStatus.innerHTML = `
+                        <div style="color: red;">
+                            <strong>Connection Error: Failed to Fetch</strong>
+                            <p>The payment server at <strong>${SERVER_URL}</strong> is not accessible.</p>
+                            <p>This usually means:</p>
+                            <ul>
+                                <li>The server is still starting on Render.com (can take 1-2 minutes)</li>
+                                <li>There's a CORS configuration issue</li>
+                                <li>Your internet connection is down</li>
+                            </ul>
+                            <p>Please try again in a few moments.</p>
+                        </div>
+                    `;
+                } else {
+                    paymentStatus.textContent = 'Error: ' + error.message;
+                }
                 paymentStatus.className = 'payment-status payment-error';
                 console.error('❌ Payment error:', error);
             }
