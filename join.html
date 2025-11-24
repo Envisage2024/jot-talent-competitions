@@ -754,18 +754,14 @@
         const SERVER_URL = (function() {
             const hostname = window.location.hostname;
             
-            // Production deployment
-            if (hostname.includes('herokuapp.com') || hostname.includes('jot-talent')) {
-                return 'https://' + hostname;
-            }
-            
             // Local development
             if (hostname === 'localhost' || hostname === '127.0.0.1') {
                 return 'http://localhost:5000';
             }
             
-            // Fallback to current origin
-            return window.location.origin;
+            // Production deployment on Render
+            // Use the Render backend URL explicitly
+            return 'https://jot-payment-api.onrender.com';
         })();
         
         console.log('💾 Payment Server URL:', SERVER_URL);
