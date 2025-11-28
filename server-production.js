@@ -219,6 +219,141 @@ async function getAccessToken() {
     }
 }
 
+// ==================== NEW: VERIFY SUFFICIENT BALANCE BEFORE PAYMENT ====================
+// This endpoint checks if user has enough money BEFORE attempting payment
+app.post('/verify-balance-before-payment', async (req, res) => {
+    try {
+        const { amount, phone, currency = 'UGX' } = req.body;
+
+        if (!amount || !phone) {
+            return res.status(400).json({ 
+                success: false, 
+                hasSufficientBalance: false,
+                message: 'Amount and phone number are required' 
+            });
+        }
+
+        console.log(`💰 [PRE-PAYMENT] Verifying balance for ${phone}: Need ${amount} ${currency}`);
+
+        // Get access token
+        let accessToken;
+        try {
+            accessToken = await getAccessToken();
+        } catch (tokenError) {
+            return res.status(503).json({
+                success: false,
+                hasSufficientBalance: false,
+                message: 'Payment gateway temporarily unavailable',
+                canRetry: true,
+                error: NODE_ENV === 'development' ? tokenError.message : undefined
+            });
+        }
+
+        // Check balance on IOTEC
+        try {
+            console.log(`📡 [PRE-PAYMENT] Querying balance for ${phone}...`);
+            
+            const balancePayload = {
+                phone: phone,
+                walletId: walletId,
+                clientId: clientId
+            };
+
+            const response = await fetch('https://pay.iotec.io/api/inquiries/balance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify(balancePayload),
+                timeout: 15000
+            });
+
+            console.log(`📥 [PRE-PAYMENT] Balance check response: ${response.status}`);
+
+            if (response.ok) {
+                const balanceData = await response.json();
+                const availableBalance = balanceData.balance || balanceData.availableBalance || 0;
+                const numAmount = Number(amount);
+
+                console.log(`✅ [PRE-PAYMENT] Balance check successful:`);
+                console.log(`   Available: ${availableBalance} ${currency}`);
+                console.log(`   Required: ${numAmount} ${currency}`);
+
+                const hasSufficientBalance = availableBalance >= numAmount;
+
+                if (hasSufficientBalance) {
+                    console.log(`✅ [PRE-PAYMENT] SUFFICIENT BALANCE - Payment can proceed`);
+                    return res.json({
+                        success: true,
+                        hasSufficientBalance: true,
+                        availableBalance: availableBalance,
+                        requiredAmount: numAmount,
+                        currency: currency,
+                        message: `✓ Balance verified: ${availableBalance} ${currency} available`,
+                        canProceedToPayment: true
+                    });
+                } else {
+                    const shortfall = numAmount - availableBalance;
+                    console.warn(`❌ [PRE-PAYMENT] INSUFFICIENT BALANCE`);
+                    console.warn(`   Shortfall: ${shortfall} ${currency}`);
+                    
+                    return res.status(402).json({
+                        success: false,
+                        hasSufficientBalance: false,
+                        availableBalance: availableBalance,
+                        requiredAmount: numAmount,
+                        currency: currency,
+                        shortfall: shortfall,
+                        message: `Insufficient balance. You have ${availableBalance} ${currency} but need ${numAmount} ${currency}`,
+                        canProceedToPayment: false,
+                        recommendation: `Please add ${shortfall} ${currency} to your account and try again`
+                    });
+                }
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                console.warn(`⚠ [PRE-PAYMENT] Balance check returned ${response.status}:`, errorData);
+                
+                // If balance check fails, allow user to proceed (will fail during actual payment if insufficient)
+                return res.json({
+                    success: true,
+                    hasSufficientBalance: null,
+                    availableBalance: null,
+                    requiredAmount: Number(amount),
+                    currency: currency,
+                    message: 'Real-time balance check unavailable. Payment validation will occur during processing.',
+                    canProceedToPayment: true,
+                    warning: 'Balance verification in progress'
+                });
+            }
+
+        } catch (err) {
+            console.error(`❌ [PRE-PAYMENT] Balance verification error:`, err.message);
+            
+            // Allow proceeding if check fails (payment will fail if truly insufficient)
+            return res.json({
+                success: true,
+                hasSufficientBalance: null,
+                availableBalance: null,
+                requiredAmount: Number(amount),
+                currency: currency,
+                message: 'Balance verification temporarily unavailable. Proceeding with payment...',
+                canProceedToPayment: true,
+                warning: 'Real-time balance could not be verified'
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ [PRE-PAYMENT] Error:', error);
+        res.status(500).json({
+            success: false,
+            hasSufficientBalance: false,
+            message: 'Internal server error',
+            error: NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
 // Payment endpoint - Process payment
 app.post('/process-payment', async (req, res) => {
     try {
