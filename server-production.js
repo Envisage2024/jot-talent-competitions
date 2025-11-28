@@ -221,8 +221,25 @@ async function getAccessToken() {
 
 // ==================== NEW: VERIFY SUFFICIENT BALANCE BEFORE PAYMENT ====================
 // This endpoint checks if user has enough money BEFORE attempting payment
+
+// Handle preflight requests for balance check endpoint
+app.options('/verify-balance-before-payment', (req, res) => {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+    res.header('Access-Control-Max-Age', '3600');
+    res.sendStatus(200);
+});
+
 app.post('/verify-balance-before-payment', async (req, res) => {
     try {
+        // Ensure CORS headers are set
+        res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+        
         const { amount, phone, currency = 'UGX' } = req.body;
         
         console.log(`\n🔵 [PRE-PAYMENT] NEW REQUEST RECEIVED`);

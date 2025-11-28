@@ -834,36 +834,36 @@
                 });
 
                 console.log('📋 Balance check response status:', response.status, response.statusText);
+                console.log('📋 Response ok?:', response.ok);
                 console.log('📋 Response headers:', {
                     'content-type': response.headers.get('content-type'),
                     'access-control-allow-origin': response.headers.get('access-control-allow-origin')
                 });
 
-                if (!response.ok) {
-                    // Try to get error details from response
-                    let errorDetails = '';
-                    try {
-                        const errorData = await response.json();
-                        errorDetails = JSON.stringify(errorData);
-                        console.error(`❌ Backend error (${response.status}):`, errorData);
-                    } catch (e) {
-                        const textError = await response.text();
-                        errorDetails = textError.substring(0, 200);
-                        console.error(`❌ Backend error (${response.status}):`, errorDetails);
-                    }
-                    
-                    console.warn(`⚠️ Balance check endpoint returned ${response.status}, allowing payment to proceed`);
+                // Always try to parse the response, regardless of status
+                let result;
+                try {
+                    result = await response.json();
+                    console.log('✅ Successfully parsed response JSON:', result);
+                } catch (parseError) {
+                    console.error('❌ Failed to parse response as JSON:', parseError.message);
+                    // If we can't parse JSON, still allow payment to proceed
                     return {
                         success: true,
-                        hasSufficientBalance: null, // Unknown - will be checked during payment
-                        message: 'Balance verification unavailable - proceeding with payment',
+                        hasSufficientBalance: null,
+                        message: 'Balance verification temporarily unavailable',
                         canProceedToPayment: true,
-                        debugInfo: { status: response.status, error: errorDetails }
+                        debugInfo: { parseError: parseError.message, status: response.status }
                     };
                 }
 
-                const result = await response.json();
-                console.log('✅ Balance check response received:', result);
+                // Check if response indicates success
+                if (result.success === false && result.hasSufficientBalance === false) {
+                    console.log('❌ Insufficient balance detected');
+                    return result; // Return the error result
+                }
+
+                console.log('✅ Balance check passed - result:', result);
                 
                 // Process result - even if balance is null, it's OK to proceed
                 // Balance will be verified during actual payment
