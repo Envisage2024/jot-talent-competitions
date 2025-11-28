@@ -585,6 +585,328 @@ app.get('/payment-status/:transactionId?', async (req, res) => {
     }
 });
 
+// ==================== LIVE PAYMENT VERIFICATION ENDPOINT ====================
+// Verifies actual payment status from IOTEC API with retry logic
+app.get('/verify-payment-live/:ioTecTransactionId', async (req, res) => {
+    const { ioTecTransactionId } = req.params;
+    const forceRefresh = req.query.force === 'true';
+    
+    try {
+        if (!ioTecTransactionId) {
+            return res.status(400).json({
+                success: false,
+                message: 'ioTec transaction ID is required',
+                paymentStatus: null
+            });
+        }
+
+        console.log(`\n🔍 [LIVE VERIFY] Starting live payment verification for: ${ioTecTransactionId}`);
+
+        // Get access token
+        let accessToken;
+        try {
+            accessToken = await getAccessToken();
+        } catch (tokenError) {
+            console.error('❌ [LIVE VERIFY] Failed to get access token:', tokenError.message);
+            return res.status(503).json({
+                success: false,
+                message: 'Cannot verify payment - unable to connect to payment gateway',
+                paymentStatus: 'UNKNOWN',
+                error: NODE_ENV === 'development' ? tokenError.message : undefined
+            });
+        }
+
+        // Retry logic with exponential backoff
+        let retries = 0;
+        const maxRetries = 3;
+        let backoffMs = 1000; // Start with 1 second
+        let lastError = null;
+        let verificationResult = null;
+
+        while (retries < maxRetries) {
+            try {
+                console.log(`📡 [LIVE VERIFY] Attempt ${retries + 1}/${maxRetries} - Querying IOTEC API...`);
+
+                // Call IOTEC API to get payment status
+                const response = await fetch(
+                    `https://pay.iotec.io/api/collections/${ioTecTransactionId}`,
+                    {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Accept': 'application/json'
+                        },
+                        timeout: 15000
+                    }
+                );
+
+                console.log(`   Response Status: ${response.status}`);
+
+                if (response.ok) {
+                    const ioTecData = await response.json();
+                    
+                    console.log(`✅ [LIVE VERIFY] Payment found - Status: ${ioTecData.status}`);
+
+                    verificationResult = {
+                        success: true,
+                        message: 'Payment verification successful',
+                        paymentStatus: ioTecData.status,
+                        ioTecData: {
+                            id: ioTecData.id,
+                            status: ioTecData.status,
+                            statusMessage: ioTecData.statusMessage || '',
+                            amount: ioTecData.amount,
+                            currency: ioTecData.currency,
+                            payer: ioTecData.payer,
+                            timestamp: ioTecData.timestamp
+                        },
+                        verified: true,
+                        verifiedAt: new Date().toISOString(),
+                        attempts: retries + 1,
+                        statusCode: response.status
+                    };
+
+                    // Update Firestore if available
+                    if (adminInitAvailable && db && ioTecData.externalId) {
+                        try {
+                            await db.collection('payments').doc(ioTecData.externalId).update({
+                                status: ioTecData.status,
+                                statusMessage: ioTecData.statusMessage,
+                                ioTecData: ioTecData,
+                                lastVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                            });
+                            console.log(`✓ [LIVE VERIFY] Firestore updated`);
+                        } catch (firestoreErr) {
+                            console.warn(`⚠ [LIVE VERIFY] Firestore update failed: ${firestoreErr.message}`);
+                        }
+                    }
+
+                    return res.json(verificationResult);
+                } else if (response.status === 404) {
+                    // Payment not found - might retry if not final attempt
+                    lastError = `Payment not found (404)`;
+                    console.warn(`⚠️ [LIVE VERIFY] Payment not found in IOTEC - Retrying...`);
+
+                    if (retries < maxRetries - 1) {
+                        console.log(`   Waiting ${backoffMs}ms before retry...`);
+                        await new Promise(resolve => setTimeout(resolve, backoffMs));
+                        backoffMs *= 2; // Exponential backoff
+                        retries++;
+                        continue;
+                    }
+                } else {
+                    // Server error - retry with backoff
+                    lastError = `IOTEC API error ${response.status}`;
+                    console.error(`❌ [LIVE VERIFY] IOTEC error ${response.status}`);
+
+                    if (retries < maxRetries - 1 && response.status >= 500) {
+                        console.log(`   Waiting ${backoffMs}ms before retry...`);
+                        await new Promise(resolve => setTimeout(resolve, backoffMs));
+                        backoffMs *= 2;
+                        retries++;
+                        continue;
+                    }
+                }
+
+                break;
+            } catch (error) {
+                lastError = error.message;
+                console.error(`❌ [LIVE VERIFY] Request failed (attempt ${retries + 1}):`, error.message);
+
+                if (retries < maxRetries - 1) {
+                    console.log(`   Waiting ${backoffMs}ms before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                    backoffMs *= 2;
+                    retries++;
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        // If we get here, verification failed after retries
+        console.error(`❌ [LIVE VERIFY] Verification failed after ${retries + 1} attempts: ${lastError}`);
+
+        // Try Firestore fallback as last resort
+        if (adminInitAvailable && db) {
+            try {
+                const paymentsSnapshot = await db.collection('payments')
+                    .where('ioTecTransactionId', '==', ioTecTransactionId)
+                    .limit(1)
+                    .get();
+
+                if (!paymentsSnapshot.empty) {
+                    const paymentData = paymentsSnapshot.docs[0].data();
+                    console.log(`ℹ️ [LIVE VERIFY] Using Firestore fallback - Last known status: ${paymentData.status}`);
+                    
+                    return res.status(200).json({
+                        success: true,
+                        message: 'Payment verification - using cached data',
+                        paymentStatus: paymentData.status,
+                        cachedData: {
+                            status: paymentData.status,
+                            amount: paymentData.amount,
+                            email: paymentData.email,
+                            phone: paymentData.phone,
+                            createdAt: paymentData.createdAt,
+                            lastVerifiedAt: paymentData.lastVerifiedAt
+                        },
+                        verified: false,
+                        verificationMethod: 'firestore_cache',
+                        verifiedAt: new Date().toISOString(),
+                        attempts: retries + 1
+                    });
+                }
+            } catch (firestoreErr) {
+                console.warn(`⚠ [LIVE VERIFY] Firestore fallback failed: ${firestoreErr.message}`);
+            }
+        }
+
+        return res.status(503).json({
+            success: false,
+            message: `Payment verification failed after ${retries + 1} attempts: ${lastError}`,
+            paymentStatus: 'VERIFICATION_FAILED',
+            error: NODE_ENV === 'development' ? lastError : undefined,
+            attempts: retries + 1,
+            recommendation: 'Please try again in a few moments or contact support'
+        });
+
+    } catch (error) {
+        console.error('❌ [LIVE VERIFY] Unexpected error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error during payment verification',
+            paymentStatus: 'ERROR',
+            error: NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
+// Alternative: Direct verification by email and amount
+app.post('/verify-payment-by-details', async (req, res) => {
+    const { email, phone, amount } = req.body;
+
+    try {
+        console.log(`\n🔍 [VERIFY DETAILS] Looking up payment by: email=${email}, amount=${amount}`);
+
+        if (!email || !amount) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and amount are required',
+                paymentStatus: null
+            });
+        }
+
+        // Check Firestore
+        if (!adminInitAvailable || !db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Payment verification service unavailable',
+                paymentStatus: null
+            });
+        }
+
+        try {
+            const paymentsSnapshot = await db.collection('payments')
+                .where('email', '==', email)
+                .where('amount', '==', Number(amount))
+                .orderBy('createdAt', 'desc')
+                .limit(1)
+                .get();
+
+            if (paymentsSnapshot.empty) {
+                return res.status(404).json({
+                    success: false,
+                    message: `No payment found for email: ${email} with amount: ${amount}`,
+                    paymentStatus: null
+                });
+            }
+
+            const paymentData = paymentsSnapshot.docs[0].data();
+
+            // If payment is still PENDING, try to verify with IOTEC
+            if (paymentData.status === 'PENDING' && paymentData.ioTecTransactionId) {
+                console.log(`📡 [VERIFY DETAILS] Payment is PENDING - attempting live verification with IOTEC...`);
+
+                try {
+                    const accessToken = await getAccessToken();
+                    const ioTecResponse = await fetch(
+                        `https://pay.iotec.io/api/collections/${paymentData.ioTecTransactionId}`,
+                        {
+                            method: 'GET',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            timeout: 15000
+                        }
+                    );
+
+                    if (ioTecResponse.ok) {
+                        const ioTecData = await ioTecResponse.json();
+                        console.log(`✅ [VERIFY DETAILS] Got IOTEC status: ${ioTecData.status}`);
+
+                        // Update Firestore with new status
+                        if (ioTecData.status !== paymentData.status) {
+                            await db.collection('payments').doc(paymentData.transactionId).update({
+                                status: ioTecData.status,
+                                statusMessage: ioTecData.statusMessage,
+                                lastVerifiedAt: admin.firestore.FieldValue.serverTimestamp()
+                            });
+
+                            paymentData.status = ioTecData.status;
+                            paymentData.statusMessage = ioTecData.statusMessage;
+                        }
+                    }
+                } catch (ioTecErr) {
+                    console.warn(`⚠ [VERIFY DETAILS] IOTEC verification failed: ${ioTecErr.message}`);
+                }
+            }
+
+            console.log(`✓ [VERIFY DETAILS] Payment found - Status: ${paymentData.status}`);
+
+            return res.json({
+                success: true,
+                message: 'Payment found and verified',
+                paymentStatus: paymentData.status,
+                paymentDetails: {
+                    transactionId: paymentData.transactionId,
+                    ioTecTransactionId: paymentData.ioTecTransactionId,
+                    email: paymentData.email,
+                    amount: paymentData.amount,
+                    currency: paymentData.currency,
+                    method: paymentData.method,
+                    status: paymentData.status,
+                    statusMessage: paymentData.statusMessage,
+                    createdAt: paymentData.createdAt,
+                    lastVerifiedAt: paymentData.lastVerifiedAt,
+                    competitionId: paymentData.competitionId
+                },
+                verified: true,
+                verifiedAt: new Date().toISOString()
+            });
+        } catch (firestoreError) {
+            console.error('❌ [VERIFY DETAILS] Firestore error:', firestoreError.message);
+            return res.status(500).json({
+                success: false,
+                message: 'Error looking up payment',
+                error: NODE_ENV === 'development' ? firestoreError.message : undefined
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ [VERIFY DETAILS] Unexpected error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
 // Send verification code
 app.post('/send-verification-code', async (req, res) => {
     try {
