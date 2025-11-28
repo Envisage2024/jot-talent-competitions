@@ -224,8 +224,14 @@ async function getAccessToken() {
 app.post('/verify-balance-before-payment', async (req, res) => {
     try {
         const { amount, phone, currency = 'UGX' } = req.body;
+        
+        console.log(`\n🔵 [PRE-PAYMENT] NEW REQUEST RECEIVED`);
+        console.log(`   From origin: ${req.headers.origin || 'no-origin'}`);
+        console.log(`   Remote IP: ${req.ip}`);
+        console.log(`   User-Agent: ${req.headers['user-agent']?.substring(0, 50)}...`);
 
         if (!amount || !phone) {
+            console.warn(`⚠️ [PRE-PAYMENT] Missing required fields: amount=${amount}, phone=${phone}`);
             return res.status(400).json({ 
                 success: false, 
                 hasSufficientBalance: false,
@@ -238,8 +244,11 @@ app.post('/verify-balance-before-payment', async (req, res) => {
         // Get access token
         let accessToken;
         try {
+            console.log(`🔑 [PRE-PAYMENT] Requesting access token from IOTEC...`);
             accessToken = await getAccessToken();
+            console.log(`✅ [PRE-PAYMENT] Got access token successfully`);
         } catch (tokenError) {
+            console.error(`❌ [PRE-PAYMENT] Failed to get access token:`, tokenError.message);
             return res.status(503).json({
                 success: false,
                 hasSufficientBalance: false,
@@ -258,6 +267,8 @@ app.post('/verify-balance-before-payment', async (req, res) => {
                 walletId: walletId,
                 clientId: clientId
             };
+            
+            console.log(`   Payload: phone=${phone}, walletId=${walletId ? '***' : 'MISSING'}, clientId=${clientId ? '***' : 'MISSING'}`);
 
             const response = await fetch('https://pay.iotec.io/api/inquiries/balance', {
                 method: 'POST',
@@ -269,7 +280,7 @@ app.post('/verify-balance-before-payment', async (req, res) => {
                 timeout: 15000
             });
 
-            console.log(`📥 [PRE-PAYMENT] Balance check response: ${response.status}`);
+            console.log(`📥 [PRE-PAYMENT] Balance check response: ${response.status} ${response.statusText}`);
 
             if (response.ok) {
                 const balanceData = await response.json();
@@ -313,6 +324,7 @@ app.post('/verify-balance-before-payment', async (req, res) => {
             } else {
                 const errorData = await response.json().catch(() => ({}));
                 console.warn(`⚠ [PRE-PAYMENT] Balance check returned ${response.status}:`, errorData);
+                console.warn(`   IOTEC Error Response:`, JSON.stringify(errorData).substring(0, 200));
                 
                 // If balance check fails, allow user to proceed (will fail during actual payment if insufficient)
                 return res.json({
@@ -329,6 +341,7 @@ app.post('/verify-balance-before-payment', async (req, res) => {
 
         } catch (err) {
             console.error(`❌ [PRE-PAYMENT] Balance verification error:`, err.message);
+            console.error(`   Error stack:`, err.stack?.substring(0, 300));
             
             // Allow proceeding if check fails (payment will fail if truly insufficient)
             return res.json({
@@ -339,12 +352,14 @@ app.post('/verify-balance-before-payment', async (req, res) => {
                 currency: currency,
                 message: 'Balance verification temporarily unavailable. Proceeding with payment...',
                 canProceedToPayment: true,
-                warning: 'Real-time balance could not be verified'
+                warning: 'Real-time balance could not be verified',
+                debugError: NODE_ENV === 'development' ? err.message : undefined
             });
         }
 
     } catch (error) {
-        console.error('❌ [PRE-PAYMENT] Error:', error);
+        console.error('❌ [PRE-PAYMENT] Outer error:', error);
+        console.error('   Error type:', error.name);
         res.status(500).json({
             success: false,
             hasSufficientBalance: false,

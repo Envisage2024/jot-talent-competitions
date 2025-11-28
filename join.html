@@ -809,33 +809,56 @@
          * @returns {Object} - { success: boolean, hasSufficientBalance: boolean, message: string, details: object }
          */
         async function checkWalletBalance(phone, amount, currency = 'UGX') {
+            const balanceCheckUrl = `${SERVER_URL}/verify-balance-before-payment`;
+            
             try {
                 console.log(`💰 Checking wallet balance for ${phone}: Need ${amount} ${currency}`);
+                console.log(`🔗 Balance check URL: ${balanceCheckUrl}`);
+                console.log(`📍 Current origin: ${window.location.origin}`);
                 
-                const response = await fetch(`${SERVER_URL}/verify-balance-before-payment`, {
+                const requestBody = {
+                    amount: Number(amount),
+                    phone: phone,
+                    currency: currency
+                };
+                
+                console.log(`📨 Sending request body:`, JSON.stringify(requestBody));
+                
+                const response = await fetch(balanceCheckUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify({
-                        amount: Number(amount),
-                        phone: phone,
-                        currency: currency
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
-                console.log('📋 Balance check response status:', response.status);
+                console.log('📋 Balance check response status:', response.status, response.statusText);
+                console.log('📋 Response headers:', {
+                    'content-type': response.headers.get('content-type'),
+                    'access-control-allow-origin': response.headers.get('access-control-allow-origin')
+                });
 
                 if (!response.ok) {
-                    // If endpoint not found or error, allow payment to proceed
-                    // (balance will be checked during payment)
-                    console.warn('⚠️ Balance check endpoint unavailable, allowing payment to proceed');
+                    // Try to get error details from response
+                    let errorDetails = '';
+                    try {
+                        const errorData = await response.json();
+                        errorDetails = JSON.stringify(errorData);
+                        console.error(`❌ Backend error (${response.status}):`, errorData);
+                    } catch (e) {
+                        const textError = await response.text();
+                        errorDetails = textError.substring(0, 200);
+                        console.error(`❌ Backend error (${response.status}):`, errorDetails);
+                    }
+                    
+                    console.warn(`⚠️ Balance check endpoint returned ${response.status}, allowing payment to proceed`);
                     return {
                         success: true,
                         hasSufficientBalance: null, // Unknown - will be checked during payment
                         message: 'Balance verification unavailable - proceeding with payment',
-                        canProceedToPayment: true
+                        canProceedToPayment: true,
+                        debugInfo: { status: response.status, error: errorDetails }
                     };
                 }
 
@@ -855,7 +878,17 @@
                 };
 
             } catch (error) {
-                console.error('❌ Balance check error:', error);
+                console.error('❌ Balance check network error:', error.message);
+                console.error('   Error type:', error.name);
+                console.error('   Error details:', error);
+                
+                // If it's a network error, log more details
+                if (error instanceof TypeError) {
+                    console.error('   This is likely a network/CORS error. Check:');
+                    console.error('   1. Is the backend server running?');
+                    console.error('   2. Is SERVER_URL correct?', SERVER_URL);
+                    console.error('   3. Are there CORS issues?');
+                }
                 
                 // If balance check fails, allow payment to proceed
                 // (payment will still validate on backend)
@@ -864,7 +897,8 @@
                     hasSufficientBalance: null, // Unknown
                     message: 'Unable to verify balance - proceeding with payment',
                     canProceedToPayment: true,
-                    warning: 'Balance verification temporarily unavailable'
+                    warning: 'Balance verification temporarily unavailable',
+                    debugInfo: { error: error.message, errorName: error.name }
                 };
             }
         }
