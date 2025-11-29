@@ -938,23 +938,51 @@
                 // Check if balance check was successful
                 if (!balanceCheck.success) {
                     // Balance check failed (network error, etc.)
+                    let errorDetails = `<strong>Status:</strong> ${balanceCheck.accountStatus}`;
+                    
+                    if (balanceCheck.accountStatus === 'CONNECTION_ERROR') {
+                        errorDetails = `
+                            <strong>❌ Connection Error</strong>
+                            <p>Unable to reach the mobile money provider.</p>
+                            <p><strong>Issue:</strong> ${balanceCheck.error || 'Network connectivity problem'}</p>
+                            <p style="font-size: 0.85em; color: #991b1b;">Error Code: ${balanceCheck.errorCode || 'N/A'}</p>
+                        `;
+                    } else if (balanceCheck.accountStatus === 'AUTH_ERROR') {
+                        errorDetails = `
+                            <strong>❌ Authentication Failed</strong>
+                            <p>Could not authenticate with payment gateway.</p>
+                            <p><strong>Issue:</strong> ${balanceCheck.message}</p>
+                        `;
+                    } else if (balanceCheck.accountStatus === 'ERROR') {
+                        errorDetails = `
+                            <strong>❌ Provider Error</strong>
+                            <p>${balanceCheck.message}</p>
+                            <p style="font-size: 0.85em; color: #991b1b;">Error: ${balanceCheck.iotecError || balanceCheck.error || 'Unknown error'}</p>
+                        `;
+                    }
+                    
                     paymentStatus.innerHTML = `
                         <div style="color: #dc2626; text-align: left;">
-                            <strong>❌ Balance Check Failed</strong>
-                            <p><strong>Status:</strong> ${balanceCheck.accountStatus}</p>
-                            <p>${balanceCheck.message}</p>
-                            ${balanceCheck.iotecError ? `<p style="font-size: 0.85em; color: #991b1b;">Error: ${balanceCheck.iotecError}</p>` : ''}
-                            <p style="font-size: 0.9em; margin-top: 8px;">Please check:</p>
-                            <ul style="margin-top: 6px; font-size: 0.9em;">
-                                <li>Your phone number is correct</li>
-                                <li>Your phone has active mobile money service</li>
-                                <li>You are registered with your mobile money provider (MTN, Airtel, etc.)</li>
-                            </ul>
+                            ${errorDetails}
+                            <p style="font-size: 0.9em; margin-top: 8px;">Please try again or contact support if problem persists.</p>
                         </div>
                     `;
                     paymentStatus.className = 'payment-status payment-error';
                     console.error('❌ Balance check failed:', balanceCheck);
                     return; // STOP - Don't proceed
+                } else if (balanceCheck.accountStatus === 'PENDING_VERIFICATION') {
+                    // Balance verification temporarily unavailable (e.g., Render network issue)
+                    // But the backend will verify during payment
+                    paymentStatus.innerHTML = `
+                        <div style="color: #f59e0b; text-align: left;">
+                            <strong>ℹ️ Balance Verification Temporarily Unavailable</strong>
+                            <p>We cannot verify your balance right now, but we will validate it during payment processing.</p>
+                            <p style="font-size: 0.9em; margin-top: 8px; color: #92400e;">Your balance will be checked by your mobile money provider when the payment is processed.</p>
+                        </div>
+                    `;
+                    paymentStatus.className = 'payment-status payment-processing';
+                    console.log('ℹ️ Balance pending verification (will be checked during payment)');
+                    // Continue to payment - don't stop
                 } else if (balanceCheck.availableBalance === null) {
                     // Balance couldn't be retrieved
                     paymentStatus.innerHTML = `

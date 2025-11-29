@@ -57,6 +57,176 @@ app.get('/health', (req, res) => {
     });
 });
 
+// ==================== DIAGNOSTIC ENDPOINT ====================
+// Test ioTec connectivity from Render server
+app.get('/diagnose-iotec', async (req, res) => {
+    const diagnostics = {
+        timestamp: new Date().toISOString(),
+        server: {
+            environment: process.env.NODE_ENV || 'unknown',
+            platform: process.platform,
+            uptime: process.uptime()
+        },
+        iotec: {
+            configured: !!(clientId && clientSecret && walletId),
+            tests: []
+        }
+    };
+
+    try {
+        // Test 1: Check if credentials are configured
+        console.log('🔍 [DIAGNOSE] Starting ioTec connectivity diagnosis...');
+        
+        diagnostics.iotec.tests.push({
+            name: 'Credentials Configured',
+            status: diagnostics.iotec.configured ? 'OK' : 'FAIL',
+            details: diagnostics.iotec.configured 
+                ? 'All credentials are configured'
+                : 'Missing: ' + [!clientId && 'CLIENT_ID', !clientSecret && 'CLIENT_SECRET', !walletId && 'WALLET_ID'].filter(Boolean).join(', ')
+        });
+
+        if (!diagnostics.iotec.configured) {
+            return res.status(400).json(diagnostics);
+        }
+
+        // Test 2: Attempt token fetch
+        console.log('🔍 [DIAGNOSE] Test 2: Attempting to get access token...');
+        const tokenStartTime = Date.now();
+        let accessToken;
+        try {
+            accessToken = await getAccessToken();
+            diagnostics.iotec.tests.push({
+                name: 'Get Access Token',
+                status: 'OK',
+                duration_ms: Date.now() - tokenStartTime,
+                token_preview: accessToken ? accessToken.substring(0, 20) + '...' : 'null'
+            });
+            console.log(`✅ [DIAGNOSE] Got token in ${Date.now() - tokenStartTime}ms`);
+        } catch (tokenErr) {
+            diagnostics.iotec.tests.push({
+                name: 'Get Access Token',
+                status: 'FAIL',
+                duration_ms: Date.now() - tokenStartTime,
+                error: tokenErr.message
+            });
+            console.error(`❌ [DIAGNOSE] Token fetch failed:`, tokenErr.message);
+            return res.status(500).json(diagnostics);
+        }
+
+        // Test 3: Try balance query endpoint
+        console.log('🔍 [DIAGNOSE] Test 3: Testing balance query endpoint...');
+        const balanceStartTime = Date.now();
+        try {
+            const testPhone = '0700000000';
+            const balanceResponse = await fetch('https://pay.iotec.io/api/v2/customers/balance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    phone: testPhone,
+                    walletId: walletId,
+                    currency: 'UGX'
+                }),
+                timeout: 10000
+            });
+
+            const balanceDuration = Date.now() - balanceStartTime;
+            let balanceBodyPreview = '';
+            
+            try {
+                const balanceData = await balanceResponse.json();
+                balanceBodyPreview = JSON.stringify(balanceData).substring(0, 200);
+            } catch (e) {
+                balanceBodyPreview = '(non-JSON response)';
+            }
+
+            diagnostics.iotec.tests.push({
+                name: 'Balance Query Endpoint',
+                status: balanceResponse.ok ? 'OK' : `HTTP ${balanceResponse.status}`,
+                duration_ms: balanceDuration,
+                response_status: balanceResponse.status,
+                response_preview: balanceBodyPreview
+            });
+
+            console.log(`✅ [DIAGNOSE] Balance query completed in ${balanceDuration}ms with status ${balanceResponse.status}`);
+        } catch (balanceErr) {
+            diagnostics.iotec.tests.push({
+                name: 'Balance Query Endpoint',
+                status: 'FAIL',
+                duration_ms: Date.now() - balanceStartTime,
+                error: balanceErr.message,
+                error_code: balanceErr.code,
+                error_type: balanceErr.name
+            });
+            console.error(`❌ [DIAGNOSE] Balance query failed:`, balanceErr.message);
+        }
+
+        // Test 4: DNS resolution
+        console.log('🔍 [DIAGNOSE] Test 4: Testing DNS resolution...');
+        const dnsStartTime = Date.now();
+        try {
+            const dns = require('dns').promises;
+            const address = await dns.resolve4('pay.iotec.io');
+            diagnostics.iotec.tests.push({
+                name: 'DNS Resolution (pay.iotec.io)',
+                status: 'OK',
+                duration_ms: Date.now() - dnsStartTime,
+                ip_addresses: address
+            });
+            console.log(`✅ [DIAGNOSE] DNS resolved to: ${address.join(', ')}`);
+        } catch (dnsErr) {
+            diagnostics.iotec.tests.push({
+                name: 'DNS Resolution',
+                status: 'FAIL',
+                error: dnsErr.message
+            });
+            console.error(`❌ [DIAGNOSE] DNS resolution failed:`, dnsErr.message);
+        }
+
+        // Test 5: Payment endpoint connectivity
+        console.log('🔍 [DIAGNOSE] Test 5: Testing payment collection endpoint...');
+        const paymentStartTime = Date.now();
+        try {
+            const paymentResponse = await fetch('https://pay.iotec.io/api/collections/collect', {
+                method: 'OPTIONS', // Just test connectivity
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                timeout: 10000
+            });
+
+            diagnostics.iotec.tests.push({
+                name: 'Payment Collection Endpoint',
+                status: 'REACHABLE',
+                duration_ms: Date.now() - paymentStartTime,
+                status_code: paymentResponse.status
+            });
+            console.log(`✅ [DIAGNOSE] Payment endpoint is reachable (status ${paymentResponse.status})`);
+        } catch (payErr) {
+            diagnostics.iotec.tests.push({
+                name: 'Payment Collection Endpoint',
+                status: 'UNREACHABLE',
+                error: payErr.message
+            });
+            console.error(`❌ [DIAGNOSE] Payment endpoint unreachable:`, payErr.message);
+        }
+
+        diagnostics.summary = 'All connectivity tests completed. Check individual test results for details.';
+        diagnostics.recommended_action = diagnostics.iotec.tests.some(t => t.status === 'FAIL') 
+            ? 'Some tests failed. Contact ioTec support or check Render firewall settings.'
+            : 'All tests passed. Connection to ioTec is working.';
+
+        res.json(diagnostics);
+
+    } catch (error) {
+        console.error('❌ [DIAGNOSE] Unexpected error:', error);
+        diagnostics.error = error.message;
+        res.status(500).json(diagnostics);
+    }
+});
+
 // Get access token from ioTec
 async function getAccessToken() {
     const tokenUrl = 'https://id.iotec.io/connect/token';
@@ -124,10 +294,11 @@ app.post('/check-balance', async (req, res) => {
         console.log(`   Wallet ID: ${walletId}`);
         
         try {
-            // ioTec Balance Query Endpoint
+            // ioTec Balance Query Endpoint - Primary
             const balanceQueryUrl = 'https://pay.iotec.io/api/v2/customers/balance';
             
             console.log(`📤 Sending balance query to: ${balanceQueryUrl}`);
+            console.log(`🔑 Using Bearer token starting with: ${accessToken.substring(0, 20)}...`);
             
             const balanceResponse = await fetch(balanceQueryUrl, {
                 method: 'POST',
@@ -144,12 +315,64 @@ app.post('/check-balance', async (req, res) => {
 
             console.log(`📨 ioTec Response Status: ${balanceResponse.status} ${balanceResponse.statusText}`);
             
-            const balanceData = await balanceResponse.json();
-            console.log('📋 ioTec Full Response Data:', JSON.stringify(balanceData, null, 2));
+            let balanceData;
+            try {
+                balanceData = await balanceResponse.json();
+                console.log('📋 ioTec Full Response Data:', JSON.stringify(balanceData, null, 2));
+            } catch (parseErr) {
+                console.error('❌ Failed to parse ioTec response as JSON:', parseErr.message);
+                const textResponse = await balanceResponse.text();
+                console.error('📋 ioTec Response (raw text):', textResponse.substring(0, 500));
+                throw new Error(`Invalid JSON response from ioTec: ${textResponse.substring(0, 100)}`);
+            }
 
             // Check if response is successful
             if (!balanceResponse.ok) {
                 console.error('❌ ioTec returned error:', balanceResponse.status, balanceData);
+                
+                // Try alternative endpoint if primary fails
+                console.log('🔄 Trying alternative ioTec endpoint...');
+                try {
+                    const altUrl = 'https://pay.iotec.io/api/v2/accounts/balance';
+                    console.log(`📤 Trying: ${altUrl}`);
+                    
+                    const altResponse = await fetch(altUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: JSON.stringify({
+                            phoneNumber: phone,
+                            walletId: walletId
+                        })
+                    });
+                    
+                    console.log(`📨 Alternative endpoint response: ${altResponse.status}`);
+                    
+                    if (altResponse.ok) {
+                        const altData = await altResponse.json();
+                        console.log('✅ Alternative endpoint succeeded:', altData);
+                        
+                        // Extract balance from alternative response
+                        const altBalance = altData.balance || altData.availableBalance || altData.account_balance;
+                        if (altBalance !== null && altBalance !== undefined) {
+                            return res.json({
+                                success: true,
+                                availableBalance: altBalance,
+                                accountStatus: 'VERIFIED',
+                                currency: altData.currency || 'UGX',
+                                phone: phone,
+                                message: 'Balance retrieved successfully from mobile money provider',
+                                provider: altData.provider || 'Mobile Money',
+                                source: 'alternative_endpoint'
+                            });
+                        }
+                    }
+                } catch (altErr) {
+                    console.log('⚠️ Alternative endpoint also failed:', altErr.message);
+                }
+                
                 return res.status(balanceResponse.status).json({
                     success: false,
                     availableBalance: null,
@@ -158,7 +381,8 @@ app.post('/check-balance', async (req, res) => {
                     phone: phone,
                     message: balanceData.message || 'Failed to query balance from mobile money provider',
                     iotecError: balanceData.error || balanceData.message,
-                    iotecResponse: balanceData
+                    iotecResponse: balanceData,
+                    iotecStatus: balanceResponse.status
                 });
             }
 
@@ -242,16 +466,38 @@ app.post('/check-balance', async (req, res) => {
         } catch (iotecError) {
             console.error('❌ Error querying ioTec balance:', iotecError.message);
             console.error('   Error type:', iotecError.name);
-            console.error('   Full error:', iotecError);
+            console.error('   Error stack:', iotecError.stack);
             
-            return res.status(500).json({
-                success: false,
+            // More detailed error information
+            if (iotecError.code === 'ENOTFOUND') {
+                console.error('   Network error: DNS lookup failed - cannot resolve iotec.io domain');
+            } else if (iotecError.code === 'ECONNREFUSED') {
+                console.error('   Network error: Connection refused - ioTec server may be down');
+            } else if (iotecError.code === 'ETIMEDOUT') {
+                console.error('   Network error: Connection timeout - ioTec server not responding');
+            }
+            
+            // ==================== FALLBACK: RETURN SUCCESS TO ALLOW PAYMENT ====================
+            // If balance check fails on Render due to network issues, still allow payment to proceed
+            // The actual balance will be verified during the payment processing by ioTec
+            console.warn('⚠️ Balance check failed, but returning fallback response to allow payment attempt');
+            console.warn('   The payment backend will still validate balance when processing the transaction');
+            
+            return res.status(200).json({
+                success: true,
                 availableBalance: null,
-                accountStatus: 'CONNECTION_ERROR',
+                accountStatus: 'PENDING_VERIFICATION',
                 currency: 'UGX',
                 phone: phone,
-                message: 'Unable to connect to mobile money provider',
-                error: iotecError.message
+                message: 'Balance verification temporarily unavailable. Proceeding with payment - balance will be verified during transaction processing.',
+                warning: 'Real-time balance verification is unavailable (this may be a Render/network issue)',
+                canProceedToPayment: true,
+                debugInfo: {
+                    error: iotecError.message,
+                    errorCode: iotecError.code,
+                    errorType: iotecError.name,
+                    recommendation: 'If problem persists, check: 1) Render server is running 2) ioTec credentials are correct 3) Render IP is whitelisted with ioTec'
+                }
             });
         }
 
