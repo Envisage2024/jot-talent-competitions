@@ -937,56 +937,74 @@
 
                 // Check if balance check was successful
                 if (!balanceCheck.success) {
-                    // Balance check failed - STOP PAYMENT
-                    let errorDetails = `<strong>Status:</strong> ${balanceCheck.accountStatus}`;
-                    
-                    if (balanceCheck.accountStatus === 'SERVICE_UNAVAILABLE') {
-                        errorDetails = `
-                            <strong>❌ Balance Service Unavailable</strong>
-                            <p>We cannot verify your balance at this time.</p>
-                            <p style="font-size: 0.9em; margin-top: 8px;">Possible reasons:</p>
-                            <ul style="margin-top: 6px; font-size: 0.9em;">
-                                <li>Your mobile money account is not properly registered</li>
-                                <li>Temporary service issue from your mobile money provider</li>
-                                <li>Network connectivity problem</li>
-                            </ul>
-                            <p style="font-size: 0.85em; margin-top: 8px; color: #991b1b;">Please try again or contact support.</p>
+                    // Check if this is a grace period (temporary fallback while debugging)
+                    if (balanceCheck.canProceedToPayment && balanceCheck.graceperiod) {
+                        // GRACE PERIOD: Allow payment to proceed with warning
+                        console.warn('⚠️  GRACE PERIOD: Proceeding to payment despite balance verification failure');
+                        
+                        paymentStatus.innerHTML = `
+                            <div style="color: #f59e0b; text-align: left;">
+                                <strong>⚠️  Balance Verification Temporarily Unavailable</strong>
+                                <p>We are currently unable to verify your balance, but you can still proceed with payment.</p>
+                                <p style="font-size: 0.9em; margin-top: 8px; color: #92400e;">Your balance will be validated by your mobile money provider during the transaction. If you do not have sufficient funds, the payment will be declined.</p>
+                                <p style="font-size: 0.9em; margin-top: 8px; color: #b45309;">📲 Phone: ${phone}</p>
+                            </div>
                         `;
-                    } else if (balanceCheck.accountStatus === 'CONNECTION_ERROR') {
-                        errorDetails = `
-                            <strong>❌ Connection Error</strong>
-                            <p>Unable to reach the mobile money provider.</p>
-                            <p><strong>Issue:</strong> ${balanceCheck.error || 'Network connectivity problem'}</p>
-                            <p style="font-size: 0.85em; color: #991b1b;">Error Code: ${balanceCheck.errorCode || 'N/A'}</p>
-                        `;
-                    } else if (balanceCheck.accountStatus === 'AUTH_ERROR') {
-                        errorDetails = `
-                            <strong>❌ Authentication Failed</strong>
-                            <p>Could not authenticate with payment gateway.</p>
-                            <p><strong>Issue:</strong> ${balanceCheck.message}</p>
-                        `;
-                    } else if (balanceCheck.accountStatus === 'NO_BALANCE_DATA') {
-                        errorDetails = `
-                            <strong>❌ Cannot Read Account Balance</strong>
-                            <p>${balanceCheck.message}</p>
-                            <p style="font-size: 0.9em; margin-top: 8px;">This usually means your account is not properly set up with your mobile money provider.</p>
-                        `;
+                        paymentStatus.className = 'payment-status payment-processing';
+                        // CONTINUE TO PAYMENT - don't return/stop
+                        
                     } else {
-                        errorDetails = `
-                            <strong>❌ Balance Check Failed</strong>
-                            <p>${balanceCheck.message}</p>
-                            <p style="font-size: 0.85em; color: #991b1b;">Status: ${balanceCheck.accountStatus}</p>
+                        // HARD FAILURE: Balance check failed - STOP PAYMENT
+                        let errorDetails = `<strong>Status:</strong> ${balanceCheck.accountStatus}`;
+                        
+                        if (balanceCheck.accountStatus === 'SERVICE_UNAVAILABLE') {
+                            errorDetails = `
+                                <strong>❌ Balance Service Unavailable</strong>
+                                <p>We cannot verify your balance at this time.</p>
+                                <p style="font-size: 0.9em; margin-top: 8px;">Possible reasons:</p>
+                                <ul style="margin-top: 6px; font-size: 0.9em;">
+                                    <li>Your mobile money account is not properly registered</li>
+                                    <li>Temporary service issue from your mobile money provider</li>
+                                    <li>Network connectivity problem</li>
+                                </ul>
+                                <p style="font-size: 0.85em; margin-top: 8px; color: #991b1b;">Please try again or contact support.</p>
+                            `;
+                        } else if (balanceCheck.accountStatus === 'CONNECTION_ERROR') {
+                            errorDetails = `
+                                <strong>❌ Connection Error</strong>
+                                <p>Unable to reach the mobile money provider.</p>
+                                <p><strong>Issue:</strong> ${balanceCheck.error || 'Network connectivity problem'}</p>
+                                <p style="font-size: 0.85em; color: #991b1b;">Error Code: ${balanceCheck.errorCode || 'N/A'}</p>
+                            `;
+                        } else if (balanceCheck.accountStatus === 'AUTH_ERROR') {
+                            errorDetails = `
+                                <strong>❌ Authentication Failed</strong>
+                                <p>Could not authenticate with payment gateway.</p>
+                                <p><strong>Issue:</strong> ${balanceCheck.message}</p>
+                            `;
+                        } else if (balanceCheck.accountStatus === 'NO_BALANCE_DATA') {
+                            errorDetails = `
+                                <strong>❌ Cannot Read Account Balance</strong>
+                                <p>${balanceCheck.message}</p>
+                                <p style="font-size: 0.9em; margin-top: 8px;">This usually means your account is not properly set up with your mobile money provider.</p>
+                            `;
+                        } else {
+                            errorDetails = `
+                                <strong>❌ Balance Check Failed</strong>
+                                <p>${balanceCheck.message}</p>
+                                <p style="font-size: 0.85em; color: #991b1b;">Status: ${balanceCheck.accountStatus}</p>
+                            `;
+                        }
+                        
+                        paymentStatus.innerHTML = `
+                            <div style="color: #dc2626; text-align: left;">
+                                ${errorDetails}
+                            </div>
                         `;
+                        paymentStatus.className = 'payment-status payment-error';
+                        console.error('❌ PAYMENT BLOCKED - Balance check failed:', balanceCheck);
+                        return; // STOP - Don't proceed
                     }
-                    
-                    paymentStatus.innerHTML = `
-                        <div style="color: #dc2626; text-align: left;">
-                            ${errorDetails}
-                        </div>
-                    `;
-                    paymentStatus.className = 'payment-status payment-error';
-                    console.error('❌ PAYMENT BLOCKED - Balance check failed:', balanceCheck);
-                    return; // STOP - Don't proceed
                 } else if (balanceCheck.availableBalance === null) {
                     // No balance data received - STOP PAYMENT
                     paymentStatus.innerHTML = `

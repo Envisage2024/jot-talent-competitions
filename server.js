@@ -318,11 +318,13 @@ app.post('/check-balance', async (req, res) => {
         ];
 
         let successResponse = null;
+        const endpointResults = [];
 
         // Try each endpoint
         for (const endpoint of endpointsToTry) {
             console.log(`\n📱 Trying endpoint: ${endpoint.name}`);
             console.log(`   URL: ${endpoint.url}`);
+            console.log(`   Body:`, JSON.stringify(endpoint.body));
             
             try {
                 const balanceResponse = await fetch(endpoint.url, {
@@ -342,11 +344,30 @@ app.post('/check-balance', async (req, res) => {
                     responseData = await balanceResponse.json();
                 } catch (parseErr) {
                     const textResp = await balanceResponse.text();
-                    console.log(`   ⚠️ Non-JSON response: ${textResp.substring(0, 100)}`);
+                    console.log(`   ⚠️ Non-JSON response: ${textResp.substring(0, 200)}`);
+                    endpointResults.push({
+                        endpoint: endpoint.name,
+                        status: balanceResponse.status,
+                        type: 'non-json',
+                        preview: textResp.substring(0, 100)
+                    });
                     continue;
                 }
 
                 console.log(`   📋 Response Data:`, JSON.stringify(responseData, null, 2));
+                console.log(`   🔑 Response Keys:`, Object.keys(responseData));
+
+                endpointResults.push({
+                    endpoint: endpoint.name,
+                    status: balanceResponse.status,
+                    keys: Object.keys(responseData),
+                    data: responseData
+                });
+
+                // Check if response contains an error message from ioTec
+                if (responseData.error || responseData.message || responseData.errorCode || responseData.statusCode) {
+                    console.log(`   ⚠️ Response contains error: ${responseData.error || responseData.message}`);
+                }
 
                 // Check if response contains balance data
                 if (balanceResponse.ok) {
@@ -391,6 +412,11 @@ app.post('/check-balance', async (req, res) => {
 
             } catch (endpointError) {
                 console.log(`   ❌ Endpoint error: ${endpointError.message}`);
+                endpointResults.push({
+                    endpoint: endpoint.name,
+                    status: 'error',
+                    error: endpointError.message
+                });
                 continue;
             }
         }
@@ -401,16 +427,31 @@ app.post('/check-balance', async (req, res) => {
             return res.json(successResponse);
         }
 
-        // If all endpoints failed, return error (don't use fallback)
+        // If all endpoints failed, log detailed debugging info
         console.error('\n❌ All endpoints failed to return balance data');
-        return res.status(503).json({
+        console.error('📊 Endpoint Results Summary:', JSON.stringify(endpointResults, null, 2));
+        
+        // ==================== TEMPORARY GRACE PERIOD ====================
+        // While we debug the correct ioTec endpoint, allow payment to proceed
+        // but with a warning that balance was not verified
+        // This prevents users from being blocked completely
+        
+        console.warn('⚠️  GRACE PERIOD: Allowing payment to proceed despite balance check failure');
+        console.warn('   This is temporary while we debug the ioTec integration');
+        console.warn('   Phone:', phone);
+        console.warn('   ioTec responses logged above for debugging');
+        
+        return res.status(200).json({
             success: false,
             availableBalance: null,
-            accountStatus: 'SERVICE_UNAVAILABLE',
+            accountStatus: 'UNABLE_TO_VERIFY',
             currency: 'UGX',
             phone: phone,
-            message: 'Unable to retrieve balance from mobile money provider. Please ensure your account is properly registered and try again.',
-            recommendation: 'If problem persists, contact support or try again in a few moments.'
+            message: 'We are unable to verify your balance at this moment, but you can still proceed with payment. Your balance will be validated by your mobile money provider during the transaction.',
+            warning: 'Balance verification temporarily unavailable',
+            canProceedToPayment: true,  // GRACE PERIOD FLAG
+            graceperiod: true,
+            recommendation: 'If you do not have sufficient balance, the payment will be declined by your mobile money provider.'
         });
 
     } catch (error) {
@@ -860,6 +901,91 @@ app.post('/resend-verification', async (req, res) => {
         res.status(500).json({ 
             message: 'Internal server error',
             error: error.message 
+        });
+    }
+});
+
+// TEST ENDPOINT: Test a single ioTec endpoint
+app.post('/test-iotec-endpoint', async (req, res) => {
+    try {
+        const { endpoint, phone = '0700000000', walletIdOverride } = req.body;
+        
+        if (!endpoint) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Endpoint URL is required' 
+            });
+        }
+
+        console.log(`🔬 Testing ioTec endpoint: ${endpoint}`);
+        console.log(`   Phone: ${phone}`);
+
+        let accessToken;
+        try {
+            accessToken = await getAccessToken();
+            console.log('✅ Got access token');
+        } catch (tokenError) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to get access token',
+                error: tokenError.message
+            });
+        }
+
+        const testBody = {
+            phone: phone,
+            walletId: walletIdOverride || walletId,
+            currency: 'UGX'
+        };
+
+        console.log(`📤 Sending request to ${endpoint}`);
+        console.log(`   Body:`, JSON.stringify(testBody, null, 2));
+
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify(testBody),
+            timeout: 15000
+        });
+
+        console.log(`📨 Response Status: ${response.status} ${response.statusText}`);
+
+        let responseData;
+        try {
+            responseData = await response.json();
+        } catch (parseErr) {
+            const textResp = await response.text();
+            return res.json({
+                success: false,
+                status: response.status,
+                responseType: 'text',
+                response: textResp,
+                message: 'Response was not JSON'
+            });
+        }
+
+        console.log(`📋 Response:`, JSON.stringify(responseData, null, 2));
+
+        return res.json({
+            success: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            responseType: 'json',
+            keys: Object.keys(responseData),
+            response: responseData,
+            headers: Object.fromEntries(response.headers)
+        });
+
+    } catch (error) {
+        console.error('❌ Test endpoint error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Test failed',
+            error: error.message,
+            stack: error.stack
         });
     }
 });

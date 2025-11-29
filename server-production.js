@@ -784,10 +784,14 @@ app.post('/check-balance', async (req, res) => {
             'data'
         ];
 
+        let successResponse = null;
+        const endpointResults = [];
+
         // Try each endpoint
         for (const endpoint of endpointsToTry) {
             try {
                 console.log(`📤 Trying endpoint: ${endpoint.name} → ${endpoint.url}`);
+                console.log(`   Body:`, JSON.stringify(endpoint.body));
                 const startTime = Date.now();
                 
                 const balanceResponse = await fetch(endpoint.url, {
@@ -801,6 +805,7 @@ app.post('/check-balance', async (req, res) => {
 
                 const duration = Date.now() - startTime;
                 console.log(`📨 Response: ${balanceResponse.status} ${balanceResponse.statusText} (${duration}ms)`);
+                console.log(`   Response keys:`, Object.keys(await balanceResponse.clone().json().catch(() => ({}))));
                 
                 if (balanceResponse.ok) {
                     let balanceData;
@@ -808,10 +813,22 @@ app.post('/check-balance', async (req, res) => {
                         balanceData = await balanceResponse.json();
                     } catch (parseErr) {
                         console.warn(`⚠️ Could not parse response from ${endpoint.name}`);
+                        endpointResults.push({
+                            endpoint: endpoint.name,
+                            status: balanceResponse.status,
+                            error: 'parse_error'
+                        });
                         continue;
                     }
 
-                    console.log(`   Response keys:`, Object.keys(balanceData));
+                    console.log(`   📋 Full response:`, JSON.stringify(balanceData, null, 2));
+
+                    endpointResults.push({
+                        endpoint: endpoint.name,
+                        status: balanceResponse.status,
+                        keys: Object.keys(balanceData),
+                        data: balanceData
+                    });
 
                     // Look for balance in various field names
                     for (const field of possibleBalanceFields) {
@@ -829,7 +846,6 @@ app.post('/check-balance', async (req, res) => {
                         if (balanceValue !== null) {
                             console.log(`✅ FOUND BALANCE: ${balanceValue} (field: ${field})`);
                             console.log(`   From endpoint: ${endpoint.name}`);
-                            console.log(`   Full response:`, JSON.stringify(balanceData, null, 2));
 
                             return res.json({
                                 success: true,
@@ -849,10 +865,21 @@ app.post('/check-balance', async (req, res) => {
                     console.log(`⚠️ No balance field found in response from ${endpoint.name}`);
                 } else {
                     console.log(`   ✗ Endpoint returned ${balanceResponse.status} - trying next`);
+                    endpointResults.push({
+                        endpoint: endpoint.name,
+                        status: balanceResponse.status,
+                        error: 'non-200-response'
+                    });
                 }
 
             } catch (endpointError) {
                 console.warn(`⚠️ Error with ${endpoint.name}: ${endpointError.message}`);
+                endpointResults.push({
+                    endpoint: endpoint.name,
+                    status: 'error',
+                    error: endpointError.message,
+                    code: endpointError.code
+                });
                 if (endpointError.code === 'ENOTFOUND') {
                     console.error('   DNS error - cannot resolve domain');
                 } else if (endpointError.code === 'ECONNREFUSED') {
@@ -864,8 +891,9 @@ app.post('/check-balance', async (req, res) => {
             }
         }
 
-        // All endpoints failed - return error (NO FALLBACK)
+        // All endpoints failed - return error with debugging info
         console.error('❌ All ioTec balance endpoints failed to return balance data');
+        console.error('📊 Endpoint Results Summary:', JSON.stringify(endpointResults, null, 2));
         
         return res.status(503).json({
             success: false,
@@ -874,10 +902,10 @@ app.post('/check-balance', async (req, res) => {
             currency: 'UGX',
             phone: phone,
             message: 'Unable to retrieve balance from mobile money provider. Please check your account status or try again later.',
+            recommendation: 'If problem persists, contact support or try again in a few moments.',
             debugInfo: NODE_ENV === 'development' ? {
-                attemptedEndpoints: endpointsToTry.length,
-                possibleFieldsChecked: possibleBalanceFields.length,
-                recommendation: 'Check: 1) Phone number is valid 2) Account is active with mobile money provider 3) Render IP is whitelisted with ioTec'
+                endpointsAttempted: endpointResults.length,
+                results: endpointResults
             } : undefined
         });
 
@@ -1652,6 +1680,91 @@ app.use((err, req, res, next) => {
         message: err.message || 'Internal server error',
         error: NODE_ENV === 'development' ? err : undefined
     });
+});
+
+// TEST ENDPOINT: Test a single ioTec endpoint
+app.post('/test-iotec-endpoint', async (req, res) => {
+    try {
+        const { endpoint, phone = '0700000000', walletIdOverride } = req.body;
+        
+        if (!endpoint) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Endpoint URL is required' 
+            });
+        }
+
+        console.log(`🔬 Testing ioTec endpoint: ${endpoint}`);
+        console.log(`   Phone: ${phone}`);
+
+        let accessToken;
+        try {
+            accessToken = await getAccessToken();
+            console.log('✅ Got access token');
+        } catch (tokenError) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to get access token',
+                error: tokenError.message
+            });
+        }
+
+        const testBody = {
+            phone: phone,
+            walletId: walletIdOverride || walletId,
+            currency: 'UGX'
+        };
+
+        console.log(`📤 Sending request to ${endpoint}`);
+        console.log(`   Body:`, JSON.stringify(testBody, null, 2));
+
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify(testBody),
+            timeout: 15000
+        });
+
+        console.log(`📨 Response Status: ${response.status} ${response.statusText}`);
+
+        let responseData;
+        try {
+            responseData = await response.json();
+        } catch (parseErr) {
+            const textResp = await response.text();
+            return res.json({
+                success: false,
+                status: response.status,
+                responseType: 'text',
+                response: textResp,
+                message: 'Response was not JSON'
+            });
+        }
+
+        console.log(`📋 Response:`, JSON.stringify(responseData, null, 2));
+
+        return res.json({
+            success: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            responseType: 'json',
+            keys: Object.keys(responseData),
+            response: responseData,
+            headers: Object.fromEntries(response.headers)
+        });
+
+    } catch (error) {
+        console.error('❌ Test endpoint error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Test failed',
+            error: error.message,
+            stack: NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
 });
 
 // ==================== START SERVER ====================
