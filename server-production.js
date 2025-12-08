@@ -842,7 +842,7 @@ async function tryBalanceEndpoint(endpoint, accessToken, maxRetries = 2) {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`  📤 Attempt ${attempt + 1}/${maxRetries + 1}: ${endpoint.name}`);
+            console.log(`    📤 Attempt ${attempt + 1}/${maxRetries + 1}: ${endpoint.name}`);
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout per endpoint
 
@@ -858,15 +858,20 @@ async function tryBalanceEndpoint(endpoint, accessToken, maxRetries = 2) {
 
             clearTimeout(timeoutId);
 
+            console.log(`      → Response status: ${balanceResponse.status}`);
+
             if (!balanceResponse.ok) {
-                console.log(`    ↳ Status ${balanceResponse.status}, retrying...`);
+                const errorText = await balanceResponse.text();
+                console.log(`      → Error response: ${errorText.substring(0, 100)}`);
                 if (attempt < maxRetries) {
+                    console.log(`      → Retrying in ${1000 * (attempt + 1)}ms...`);
                     await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
                 }
                 continue;
             }
 
             let balanceData = await balanceResponse.json();
+            console.log(`      → Response data keys: ${Object.keys(balanceData).join(', ')}`);
 
             // Search for balance in various field names
             for (const field of possibleBalanceFields) {
@@ -881,7 +886,7 @@ async function tryBalanceEndpoint(endpoint, accessToken, maxRetries = 2) {
                 }
 
                 if (balanceValue !== null && balanceValue >= 0) {
-                    console.log(`  ✅ Found balance: ${balanceValue} (field: ${field})`);
+                    console.log(`      ✅ Found balance: ${balanceValue} (field: ${field})`);
                     return {
                         success: true,
                         balance: balanceValue,
@@ -890,11 +895,16 @@ async function tryBalanceEndpoint(endpoint, accessToken, maxRetries = 2) {
                 }
             }
 
-            console.log(`    ↳ No valid balance field found`);
+            console.log(`      → No valid balance field found in response`);
+            if (attempt < maxRetries) {
+                console.log(`      → Retrying in ${1000 * (attempt + 1)}ms...`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+            }
 
         } catch (err) {
-            console.log(`    ↳ Error: ${err.message}`);
+            console.log(`      ❌ Error: ${err.message}`);
             if (attempt < maxRetries) {
+                console.log(`      → Retrying in ${1000 * (attempt + 1)}ms...`);
                 await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
             }
         }
@@ -903,8 +913,24 @@ async function tryBalanceEndpoint(endpoint, accessToken, maxRetries = 2) {
     return { success: false, balance: null };
 }
 
+// CORS preflight for balance check
+app.options('/check-balance', (req, res) => {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    res.header('Access-Control-Max-Age', '3600');
+    res.sendStatus(200);
+});
+
 // Check user balance via ioTec - with retry logic
 app.post('/check-balance', async (req, res) => {
+    // Set CORS headers
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+
     try {
         const { phone } = req.body;
 
@@ -922,13 +948,14 @@ app.post('/check-balance', async (req, res) => {
         let accessToken;
         try {
             accessToken = await getAccessToken();
+            console.log(`✅ [BALANCE CHECK] Got access token`);
         } catch (tokenError) {
             console.error(`❌ [BALANCE CHECK] Token error: ${tokenError.message}`);
-            return res.status(500).json({
+            return res.json({
                 success: false,
                 availableBalance: null,
-                message: 'Authentication failed',
-                code: 'AUTH_ERROR'
+                message: 'Unable to verify balance. Please try again.',
+                code: 'BALANCE_UNAVAILABLE'
             });
         }
 
@@ -948,7 +975,8 @@ app.post('/check-balance', async (req, res) => {
 
         // Try each endpoint
         for (const endpoint of endpointsToTry) {
-            const result = await tryBalanceEndpoint(endpoint, accessToken, 1);
+            console.log(`📤 Trying endpoint: ${endpoint.name}`);
+            const result = await tryBalanceEndpoint(endpoint, accessToken, 2);
             if (result.success) {
                 console.log(`✅ [BALANCE CHECK] Balance verified: ${result.balance} ${result.currency}`);
                 return res.json({
@@ -960,9 +988,9 @@ app.post('/check-balance', async (req, res) => {
             }
         }
 
-        // All endpoints exhausted - return 500, not 503
+        // All endpoints exhausted - return with success: false
         console.error(`❌ [BALANCE CHECK] Unable to retrieve balance after all retries`);
-        return res.status(500).json({
+        return res.json({
             success: false,
             availableBalance: null,
             message: 'Unable to verify balance. Please try again.',
@@ -971,10 +999,10 @@ app.post('/check-balance', async (req, res) => {
 
     } catch (error) {
         console.error(`❌ [BALANCE CHECK] Unexpected error: ${error.message}`);
-        return res.status(500).json({
+        return res.json({
             success: false,
             availableBalance: null,
-            message: 'Balance check failed',
+            message: 'Unable to verify balance. Please try again.',
             code: 'INTERNAL_ERROR'
         });
     }
