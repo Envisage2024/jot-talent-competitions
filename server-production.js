@@ -837,14 +837,18 @@ app.post('/process-payment', async (req, res) => {
 async function tryBalanceEndpoint(endpoint, accessToken, maxRetries = 2) {
     const possibleBalanceFields = [
         'balance', 'availableBalance', 'account_balance', 'accountBalance',
-        'walletBalance', 'currentBalance', 'amount', 'balance_info', 'data'
+        'walletBalance', 'currentBalance', 'amount', 'balance_info', 'data',
+        'available_balance', 'accountBalance', 'customer_balance'
     ];
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             console.log(`    📤 Attempt ${attempt + 1}/${maxRetries + 1}: ${endpoint.name}`);
+            console.log(`       URL: ${endpoint.url}`);
+            console.log(`       Body: ${JSON.stringify(endpoint.body).substring(0, 100)}`);
+            
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout per endpoint
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
             const balanceResponse = await fetch(endpoint.url, {
                 method: 'POST',
@@ -859,57 +863,87 @@ async function tryBalanceEndpoint(endpoint, accessToken, maxRetries = 2) {
             clearTimeout(timeoutId);
 
             console.log(`      → Response status: ${balanceResponse.status}`);
+            console.log(`      → Content-Type: ${balanceResponse.headers.get('content-type')}`);
 
             if (!balanceResponse.ok) {
                 const errorText = await balanceResponse.text();
-                console.log(`      → Error response: ${errorText.substring(0, 100)}`);
+                console.log(`      → Error response: ${errorText.substring(0, 150)}`);
                 if (attempt < maxRetries) {
-                    console.log(`      → Retrying in ${1000 * (attempt + 1)}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                    const delay = 1000 * Math.pow(2, attempt); // Exponential backoff
+                    console.log(`      → Retrying in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
                 }
                 continue;
             }
 
             let balanceData = await balanceResponse.json();
             console.log(`      → Response data keys: ${Object.keys(balanceData).join(', ')}`);
+            console.log(`      → Full response: ${JSON.stringify(balanceData).substring(0, 200)}`);
 
-            // Search for balance in various field names
+            // Try to find balance in response
+            let foundBalance = null;
+
+            // Method 1: Direct field search
             for (const field of possibleBalanceFields) {
-                let balanceValue = null;
-
                 if (balanceData[field] !== null && balanceData[field] !== undefined) {
-                    if (typeof balanceData[field] === 'number') {
-                        balanceValue = balanceData[field];
-                    } else if (typeof balanceData[field] === 'object' && balanceData[field].balance) {
-                        balanceValue = balanceData[field].balance;
+                    const val = balanceData[field];
+                    
+                    if (typeof val === 'number' && val >= 0) {
+                        foundBalance = val;
+                        console.log(`      ✅ Found balance as number in field "${field}": ${foundBalance}`);
+                        break;
+                    } else if (typeof val === 'string') {
+                        const numVal = parseFloat(val);
+                        if (!isNaN(numVal) && numVal >= 0) {
+                            foundBalance = numVal;
+                            console.log(`      ✅ Found balance as string in field "${field}": ${foundBalance}`);
+                            break;
+                        }
+                    } else if (typeof val === 'object' && val !== null) {
+                        // Check if object has balance property
+                        if (typeof val.balance === 'number' && val.balance >= 0) {
+                            foundBalance = val.balance;
+                            console.log(`      ✅ Found balance in nested field "${field}.balance": ${foundBalance}`);
+                            break;
+                        }
+                        if (typeof val.amount === 'number' && val.amount >= 0) {
+                            foundBalance = val.amount;
+                            console.log(`      ✅ Found balance in nested field "${field}.amount": ${foundBalance}`);
+                            break;
+                        }
                     }
-                }
-
-                if (balanceValue !== null && balanceValue >= 0) {
-                    console.log(`      ✅ Found balance: ${balanceValue} (field: ${field})`);
-                    return {
-                        success: true,
-                        balance: balanceValue,
-                        currency: balanceData.currency || 'UGX'
-                    };
                 }
             }
 
-            console.log(`      → No valid balance field found in response`);
+            if (foundBalance !== null) {
+                return {
+                    success: true,
+                    balance: foundBalance,
+                    currency: balanceData.currency || balanceData.Currency || 'UGX'
+                };
+            }
+
+            console.log(`      ⚠️  No valid balance field found in response`);
             if (attempt < maxRetries) {
-                console.log(`      → Retrying in ${1000 * (attempt + 1)}ms...`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                const delay = 1000 * Math.pow(2, attempt);
+                console.log(`      → Retrying in ${delay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
             }
 
         } catch (err) {
             console.log(`      ❌ Error: ${err.message}`);
+            if (err.name === 'AbortError') {
+                console.log(`      → Timeout! Retrying...`);
+            }
             if (attempt < maxRetries) {
-                console.log(`      → Retrying in ${1000 * (attempt + 1)}ms...`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                const delay = 1000 * Math.pow(2, attempt);
+                console.log(`      → Retrying in ${delay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
     }
 
+    console.log(`    ❌ All retries exhausted for ${endpoint.name}`);
     return { success: false, balance: null };
 }
 
@@ -959,7 +993,7 @@ app.post('/check-balance', async (req, res) => {
             });
         }
 
-        // Define endpoints to try
+        // Define endpoints to try - ordered by likelihood of success
         const endpointsToTry = [
             {
                 name: 'v2 Inquiries Balance',
@@ -967,16 +1001,31 @@ app.post('/check-balance', async (req, res) => {
                 body: { phone, walletId, currency: 'UGX' }
             },
             {
+                name: 'v2 Customers Balance',
+                url: 'https://pay.iotec.io/api/v2/customers/balance',
+                body: { phoneNumber: phone, currency: 'UGX' }
+            },
+            {
                 name: 'v2 Accounts Balance',
                 url: 'https://pay.iotec.io/api/v2/accounts/balance',
                 body: { phoneNumber: phone, walletId }
+            },
+            {
+                name: 'v1 Inquiries Balance',
+                url: 'https://pay.iotec.io/api/inquiries/balance',
+                body: { phone, walletId, currency: 'UGX' }
+            },
+            {
+                name: 'Balance Check Endpoint',
+                url: 'https://pay.iotec.io/api/balance-check',
+                body: { phone, currency: 'UGX' }
             }
         ];
 
-        // Try each endpoint
+        // Try each endpoint (try harder with more retries)
         for (const endpoint of endpointsToTry) {
-            console.log(`📤 Trying endpoint: ${endpoint.name}`);
-            const result = await tryBalanceEndpoint(endpoint, accessToken, 2);
+            console.log(`\n📤 Trying endpoint: ${endpoint.name}`);
+            const result = await tryBalanceEndpoint(endpoint, accessToken, 3); // Increased to 3 retries
             if (result.success) {
                 console.log(`✅ [BALANCE CHECK] Balance verified: ${result.balance} ${result.currency}`);
                 return res.json({
@@ -989,7 +1038,7 @@ app.post('/check-balance', async (req, res) => {
         }
 
         // All endpoints exhausted - return with success: false
-        console.error(`❌ [BALANCE CHECK] Unable to retrieve balance after all retries`);
+        console.error(`\n❌ [BALANCE CHECK] Unable to retrieve balance after trying all ${endpointsToTry.length} endpoints`);
         return res.json({
             success: false,
             availableBalance: null,
